@@ -19,7 +19,7 @@ export default async function SettingsPage() {
   const canPrices = can(ctx.session.role, "managePrices");
   const canSettings = can(ctx.session.role, "settings");
 
-  const priceRows = prices.map((p) => ({ product: p.product, current: p.current ?? "Not set" }));
+  const priceRows = prices.map((p) => ({ product: p.product, current: p.current, margin: p.margin }));
 
   return (
     <AppShell>
@@ -56,6 +56,7 @@ export default async function SettingsPage() {
               columns={[
                 { key: "product", label: "Product" },
                 { key: "current", label: "Current rate" },
+                { key: "margin", label: "Dealer margin" },
               ]}
             />
           </div>
@@ -66,7 +67,7 @@ export default async function SettingsPage() {
         <div className="mt-6">
           <DataEntryForm
             title="Update fuel rate"
-            description="A new rate applies to readings dated on or after its effective date."
+            description="Save a new selling rate and PKR-per-litre margin. Historical readings remain unchanged."
             fields={priceFields}
             action={createFuelPrice}
             submitLabel="Save rate"

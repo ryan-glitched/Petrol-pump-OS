@@ -8,7 +8,6 @@ import { type ActionState, parseForm, toActionError } from "@/lib/actions/helper
 import { asPaisa, toPaisa } from "@/lib/money";
 import { dipLitres, nozzleAmountPaisa, nozzleLitres } from "@/lib/domain/readings";
 import { mobilProfitPaisa, reconcileSales } from "@/lib/domain/sales";
-import { rateForProductOn } from "@/lib/domain/pricing";
 import { recomputeVariance } from "@/lib/queries/variance";
 import {
   creditSaleInput,
@@ -21,9 +20,24 @@ import {
   tankDipInput,
 } from "@/lib/validation/schemas";
 
-async function resolveRatePaisa(branchId: string, productId: string, date: string): Promise<number | null> {
-  const prices = await prisma.fuelPrice.findMany({ where: { branchId, productId } });
-  return rateForProductOn(prices, productId, date);
+async function resolveFuelPrice(branchId: string, productId: string, date: string) {
+  return prisma.fuelPrice.findFirst({
+    where: { branchId, productId, effectiveFrom: { lte: date } },
+    orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+  });
+}
+
+async function recordBelongsToBranch(
+  model: "shift" | "staff",
+  id: string | undefined,
+  branchId: string,
+): Promise<boolean> {
+  if (!id) return true;
+  const record =
+    model === "shift"
+      ? await prisma.shift.findFirst({ where: { id, branchId }, select: { id: true } })
+      : await prisma.staff.findFirst({ where: { id, branchId, active: true }, select: { id: true } });
+  return Boolean(record);
 }
 
 export async function createShift(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -33,6 +47,12 @@ export async function createShift(_prev: ActionState, formData: FormData): Promi
     const parsed = parseForm(shiftInput, formData);
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
+    const [managerValid, cashierValid] = await Promise.all([
+      recordBelongsToBranch("staff", d.managerId, branchId),
+      recordBelongsToBranch("staff", d.cashierId, branchId),
+    ]);
+    if (!managerValid) return { ok: false, errors: { managerId: "Manager is not active at this branch" } };
+    if (!cashierValid) return { ok: false, errors: { cashierId: "Cashier is not active at this branch" } };
     const row = await prisma.shift.create({
       data: {
         branchId,
@@ -65,13 +85,19 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
 
     const nozzle = await prisma.nozzle.findFirst({ where: { id: d.nozzleId, branchId } });
     if (!nozzle) return { ok: false, errors: { nozzleId: "Unknown nozzle for this branch" } };
+    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId))) {
+      return { ok: false, errors: { shiftId: "Shift does not belong to this branch" } };
+    }
+    if (!(await recordBelongsToBranch("staff", d.staffId, branchId))) {
+      return { ok: false, errors: { staffId: "Staff member is not active at this branch" } };
+    }
 
-    const ratePaisa = await resolveRatePaisa(branchId, nozzle.productId, d.date);
-    if (ratePaisa === null) {
+    const fuelPrice = await resolveFuelPrice(branchId, nozzle.productId, d.date);
+    if (!fuelPrice) {
       return { ok: false, message: "No fuel price is set for this product. Add a rate in Settings first." };
     }
     const litres = nozzleLitres(d.openingReading, d.closingReading);
-    const amountPaisa = nozzleAmountPaisa(litres, asPaisa(ratePaisa));
+    const amountPaisa = nozzleAmountPaisa(litres, asPaisa(fuelPrice.ratePaisa));
 
     const row = await prisma.$transaction(async (tx) => {
       const reading = await tx.nozzleReading.create({
@@ -80,18 +106,22 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
           shiftId: d.shiftId || null,
           nozzleId: nozzle.id,
           productId: nozzle.productId,
+          fuelPriceId: fuelPrice.id,
           opening: d.openingReading,
           closing: d.closingReading,
           litres,
-          ratePaisa,
+          ratePaisa: fuelPrice.ratePaisa,
+          dealerMarginPaisaPerL: fuelPrice.dealerMarginPaisaPerL,
           amountPaisa,
           staffId: d.staffId || null,
           date: d.date,
         },
       });
-      await tx.stockMove.create({
-        data: { branchId, tankId: nozzle.tankId, type: "SALE", litres: -litres, refId: reading.id },
-      });
+      if (litres > 0) {
+        await tx.stockMove.create({
+          data: { branchId, tankId: nozzle.tankId, type: "SALE", litres: -litres, refId: reading.id },
+        });
+      }
       return reading;
     });
 
@@ -115,6 +145,9 @@ export async function createTankDip(_prev: ActionState, formData: FormData): Pro
     const d = parsed.data;
     const tank = await prisma.tank.findFirst({ where: { id: d.tankId, branchId } });
     if (!tank) return { ok: false, errors: { tankId: "Unknown tank for this branch" } };
+    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId))) {
+      return { ok: false, errors: { shiftId: "Shift does not belong to this branch" } };
+    }
 
     const row = await prisma.tankDip.create({
       data: {
@@ -148,6 +181,9 @@ export async function createDelivery(_prev: ActionState, formData: FormData): Pr
     const d = parsed.data;
     const tank = await prisma.tank.findFirst({ where: { id: d.tankId, branchId } });
     if (!tank) return { ok: false, errors: { tankId: "Unknown tank for this branch" } };
+    if (tank.productId !== d.productId) {
+      return { ok: false, errors: { productId: "Selected fuel does not match the selected tank" } };
+    }
 
     const ratePaisa = toPaisa(d.purchaseRate);
     const costPaisa = Math.round(ratePaisa * d.quantity);
@@ -192,6 +228,9 @@ export async function createSalesEntry(_prev: ActionState, formData: FormData): 
     const parsed = parseForm(salesInput, formData);
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
+    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId))) {
+      return { ok: false, errors: { shiftId: "Shift does not belong to this branch" } };
+    }
     const { totalPaisa, diffPaisa } = reconcileSales({
       cashPaisa: toPaisa(d.cashSales),
       cardPaisa: toPaisa(d.cardSales),
@@ -227,6 +266,9 @@ export async function createMobilOilSale(_prev: ActionState, formData: FormData)
     const parsed = parseForm(mobilOilInput, formData);
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
+    if (!(await recordBelongsToBranch("staff", d.staffId, branchId))) {
+      return { ok: false, errors: { staffId: "Staff member is not active at this branch" } };
+    }
     const purchasePaisa = toPaisa(d.purchasePrice);
     const sellingPaisa = toPaisa(d.sellingPrice);
     const row = await prisma.mobilOilSale.create({
@@ -257,6 +299,7 @@ export async function createExpense(_prev: ActionState, formData: FormData): Pro
     const parsed = parseForm(expenseInput, formData);
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
+
     const row = await prisma.expense.create({
       data: {
         branchId,
@@ -285,6 +328,12 @@ export async function createCreditSale(_prev: ActionState, formData: FormData): 
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
 
+    const product = await prisma.product.findFirst({
+      where: { id: d.productId, kind: "FUEL", active: true },
+      select: { id: true },
+    });
+    if (!product) return { ok: false, errors: { productId: "Select an active fuel product" } };
+
     const row = await prisma.$transaction(async (tx) => {
       const customer =
         (await tx.creditCustomer.findFirst({ where: { branchId, name: d.customerName, vehicle: d.vehicleNumber } })) ??
@@ -294,6 +343,7 @@ export async function createCreditSale(_prev: ActionState, formData: FormData): 
           branchId,
           customerId: customer.id,
           productId: d.productId,
+          date: d.date,
           litres: d.litres,
           amountPaisa: toPaisa(d.amount),
           paidPaisa: d.status === "Paid" ? toPaisa(d.amount) : 0,

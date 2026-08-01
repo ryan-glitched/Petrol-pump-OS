@@ -1,20 +1,34 @@
-// PetrolPumpOS data model.
-// Conventions:
-//  - Money is stored as integer paisa (see lib/money.ts). Never floats, never strings.
-//  - Every operational record carries a scalar `branchId` so queries are branch-scoped.
-//  - Enums are modelled as String (SQLite has no native enum); allowed values live in lib/validation.
-//  - Operational events (readings, dips, deliveries, sales, stock moves) are append-only.
+// PetrolPumpOS V1 data model.
+//
+// Design rules:
+// - PostgreSQL is the source of truth.
+// - Money is stored as integer paisa; floating point money is never stored.
+// - Operational rows are branch-scoped and linked with database foreign keys.
+// - Business dates use validated YYYY-MM-DD strings in Asia/Karachi.
+// - Fuel readings snapshot both price and dealer margin so history never changes.
+// - Operational ledgers are append-only; corrections use adjustment/audit rows.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// ---- Identity & access ----------------------------------------------------
+// ---- Tenant, identity, and access ----------------------------------------
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  legalName String?
+  timezone  String   @default("Asia/Karachi")
+  currency  String   @default("PKR")
+  branches  Branch[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
 model User {
   id           String       @id @default(cuid())
@@ -24,44 +38,79 @@ model User {
   role         String // SuperAdmin | Owner | Manager | Cashier | Filler
   active       Boolean      @default(true)
   branches     UserBranch[]
+  auditLogs    AuditLog[]
   createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([active])
 }
 
-// Many-to-many: which branches a user may access. SuperAdmin/Owner may have all.
 model UserBranch {
-  userId   String
-  branchId String
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  userId     String
+  branchId   String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
 
   @@id([userId, branchId])
+  @@index([branchId])
 }
 
-// ---- Reference data -------------------------------------------------------
+// ---- Station configuration ----------------------------------------------
 
 model Branch {
-  id                   String       @id @default(cuid())
+  id                   String           @id @default(cuid())
+  organizationId       String
   name                 String
   company              String
   city                 String
   managerName          String
-  status               String // Live | Setup
-  varianceTolerancePct Float        @default(1.0) // |variance%| above this is flagged
+  status               String           @default("SETUP") // LIVE | SETUP | INACTIVE
+  timezone             String           @default("Asia/Karachi")
+  varianceTolerancePct Float            @default(1.0)
+  organization         Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   users                UserBranch[]
-  createdAt            DateTime     @default(now())
+  tanks                Tank[]
+  dispensers           Dispenser[]
+  nozzles              Nozzle[]
+  staff                Staff[]
+  shifts               Shift[]
+  readings             NozzleReading[]
+  dips                 TankDip[]
+  deliveries           Delivery[]
+  salesEntries         SalesEntry[]
+  mobilOilSales        MobilOilSale[]
+  expenses             Expense[]
+  creditCustomers      CreditCustomer[]
+  creditSales          CreditSale[]
+  creditPayments       CreditPayment[]
+  fuelPrices           FuelPrice[]
+  stockMoves           StockMove[]
+  varianceLogs         VarianceLog[]
+  auditLogs            AuditLog[]
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
 }
 
 model Product {
-  id          String         @id @default(cuid())
-  name        String         @unique
+  id          String          @id @default(cuid())
+  name        String          @unique
   kind        String // FUEL | LUBE
-  active      Boolean        @default(true)
+  unit        String          @default("LITRE")
+  active      Boolean         @default(true)
   tanks       Tank[]
   nozzles     Nozzle[]
   fuelPrices  FuelPrice[]
   deliveries  Delivery[]
   creditSales CreditSale[]
   readings    NozzleReading[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([kind, active])
 }
 
 model Tank {
@@ -71,19 +120,33 @@ model Tank {
   productId    String
   capacityL    Float
   safeLevelL   Float
-  product      Product       @relation(fields: [productId], references: [id])
+  active       Boolean       @default(true)
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
   nozzles      Nozzle[]
   dips         TankDip[]
   deliveries   Delivery[]
   stockMoves   StockMove[]
   varianceLogs VarianceLog[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId, productId, active])
 }
 
 model Dispenser {
-  id       String   @id @default(cuid())
-  branchId String
-  label    String
-  nozzles  Nozzle[]
+  id        String   @id @default(cuid())
+  branchId  String
+  label     String
+  active    Boolean  @default(true)
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  nozzles   Nozzle[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, label])
+  @@index([branchId, active])
 }
 
 model Nozzle {
@@ -91,62 +154,116 @@ model Nozzle {
   branchId    String
   dispenserId String
   productId   String
-  tankId      String // the physical tank this nozzle draws from
+  tankId      String
   label       String
-  dispenser   Dispenser       @relation(fields: [dispenserId], references: [id])
-  product     Product         @relation(fields: [productId], references: [id])
-  tank        Tank            @relation(fields: [tankId], references: [id])
+  active      Boolean         @default(true)
+  branch      Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  dispenser   Dispenser       @relation(fields: [dispenserId], references: [id], onDelete: Restrict)
+  product     Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tank        Tank            @relation(fields: [tankId], references: [id], onDelete: Restrict)
   readings    NozzleReading[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([dispenserId, label])
+  @@index([branchId, active])
+  @@index([tankId])
 }
 
 model Staff {
-  id        String   @id @default(cuid())
-  branchId  String
-  name      String
-  role      String // Manager | Cashier | Filler | Guard
-  shiftSlot String // Shift 1 | Shift 2
-  phone     String
-  status    String // Present | Off Duty | Leave
-  createdAt DateTime @default(now())
+  id            String            @id @default(cuid())
+  branchId      String
+  employeeCode  String?
+  name          String
+  role          String // Manager | Cashier | Filler | Guard
+  shiftSlot     String
+  phone         String
+  status        String // Present | Off Duty | Leave
+  active        Boolean           @default(true)
+  branch        Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  managedShifts Shift[]           @relation("ShiftManager")
+  cashierShifts Shift[]           @relation("ShiftCashier")
+  assignments   ShiftAssignment[]
+  readings      NozzleReading[]
+  mobilOilSales MobilOilSale[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([branchId, employeeCode])
+  @@index([branchId, active, role])
 }
 
-// ---- Operational ledger (append-only) -------------------------------------
+// ---- Operational ledger --------------------------------------------------
 
 model Shift {
-  id              String          @id @default(cuid())
-  branchId        String
-  date            String // ISO date (YYYY-MM-DD) in Asia/Karachi
-  shiftSlot       String
-  managerId       String?
-  cashierId       String?
-  fillers         String? // comma-separated staff names
-  guards          String?
-  openingCashPaisa Int            @default(0)
-  closingCashPaisa Int            @default(0)
-  notes           String?
-  readings        NozzleReading[]
-  dips            TankDip[]
-  sales           SalesEntry[]
-  createdAt       DateTime        @default(now())
+  id               String            @id @default(cuid())
+  branchId         String
+  date             String
+  shiftSlot        String
+  status           String            @default("OPEN") // OPEN | CLOSED | APPROVED | VOID
+  managerId        String?
+  cashierId        String?
+  fillers          String? // legacy display field; new records should use assignments
+  guards           String? // legacy display field; new records should use assignments
+  openingCashPaisa Int               @default(0)
+  closingCashPaisa Int               @default(0)
+  notes            String?
+  closedAt         DateTime?
+  approvedAt       DateTime?
+  branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  manager          Staff?            @relation("ShiftManager", fields: [managerId], references: [id], onDelete: SetNull)
+  cashier          Staff?            @relation("ShiftCashier", fields: [cashierId], references: [id], onDelete: SetNull)
+  assignments      ShiftAssignment[]
+  readings         NozzleReading[]
+  dips             TankDip[]
+  sales            SalesEntry?
+  creditSales      CreditSale[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([branchId, date, shiftSlot])
+  @@index([branchId, date, status])
+}
+
+model ShiftAssignment {
+  shiftId   String
+  staffId   String
+  duty      String // MANAGER | CASHIER | FILLER | GUARD
+  shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  staff     Staff    @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@id([shiftId, staffId, duty])
+  @@index([staffId])
 }
 
 model NozzleReading {
-  id          String   @id @default(cuid())
-  branchId    String
-  shiftId     String?
-  nozzleId    String
-  productId   String
-  opening     Float
-  closing     Float
-  litres      Float
-  ratePaisa   Int
-  amountPaisa Int
-  staffId     String?
-  date        String
-  nozzle      Nozzle   @relation(fields: [nozzleId], references: [id])
-  product     Product  @relation(fields: [productId], references: [id])
-  shift       Shift?   @relation(fields: [shiftId], references: [id])
-  createdAt   DateTime @default(now())
+  id                    String    @id @default(cuid())
+  branchId              String
+  shiftId               String?
+  nozzleId              String
+  productId             String
+  fuelPriceId           String
+  opening               Float
+  closing               Float
+  litres                Float
+  ratePaisa             Int
+  dealerMarginPaisaPerL Int
+  amountPaisa           Int
+  staffId               String?
+  date                  String
+  branch                Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  nozzle                Nozzle    @relation(fields: [nozzleId], references: [id], onDelete: Restrict)
+  product               Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  fuelPrice             FuelPrice @relation(fields: [fuelPriceId], references: [id], onDelete: Restrict)
+  staff                 Staff?    @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  shift                 Shift?    @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  createdAt             DateTime  @default(now())
+
+  @@unique([shiftId, nozzleId])
+  @@index([branchId, date])
+  @@index([nozzleId, date])
+  @@index([fuelPriceId])
 }
 
 model TankDip {
@@ -157,35 +274,44 @@ model TankDip {
   date       String
   openingDip Float
   closingDip Float
-  litres     Float // openingDip - closingDip (consumption per the dip stick)
+  litres     Float
   notes      String?
-  tank       Tank     @relation(fields: [tankId], references: [id])
-  shift      Shift?   @relation(fields: [shiftId], references: [id])
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  tank       Tank     @relation(fields: [tankId], references: [id], onDelete: Restrict)
+  shift      Shift?   @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   createdAt  DateTime @default(now())
+
+  @@unique([shiftId, tankId])
+  @@index([branchId, tankId, date])
 }
 
 model Delivery {
-  id         String   @id @default(cuid())
-  branchId   String
-  date       String
-  supplier   String
-  productId  String
-  tankId     String
-  quantityL  Float
-  ratePaisa  Int
-  costPaisa  Int
-  invoice    String
-  vehicle    String?
-  notes      String?
-  product    Product  @relation(fields: [productId], references: [id])
-  tank       Tank     @relation(fields: [tankId], references: [id])
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  branchId  String
+  date      String
+  supplier  String
+  productId String
+  tankId    String
+  quantityL Float
+  ratePaisa Int
+  costPaisa Int
+  invoice   String
+  vehicle   String?
+  notes     String?
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  tank      Tank     @relation(fields: [tankId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@unique([branchId, invoice])
+  @@index([branchId, date])
+  @@index([tankId, date])
 }
 
 model SalesEntry {
   id              String   @id @default(cuid())
   branchId        String
-  shiftId         String?
+  shiftId         String?  @unique
   date            String
   cashPaisa       Int
   cardPaisa       Int
@@ -193,8 +319,12 @@ model SalesEntry {
   totalPaisa      Int
   cashInHandPaisa Int
   diffPaisa       Int
-  shift           Shift?   @relation(fields: [shiftId], references: [id])
+  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  shift           Shift?   @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([branchId, date])
 }
 
 model MobilOilSale {
@@ -207,7 +337,11 @@ model MobilOilSale {
   sellingPaisa  Int
   profitPaisa   Int
   staffId       String?
+  branch        Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  staff         Staff?   @relation(fields: [staffId], references: [id], onDelete: SetNull)
   createdAt     DateTime @default(now())
+
+  @@index([branchId, date])
 }
 
 model Expense {
@@ -219,53 +353,111 @@ model Expense {
   paidBy      String
   description String
   receiptUrl  String?
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   createdAt   DateTime @default(now())
+
+  @@index([branchId, date, category])
 }
 
 model CreditCustomer {
-  id       String       @id @default(cuid())
-  branchId String
-  name     String
-  vehicle  String
-  sales    CreditSale[]
+  id        String          @id @default(cuid())
+  branchId  String
+  name      String
+  vehicle   String
+  phone     String?
+  active    Boolean         @default(true)
+  branch    Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  sales     CreditSale[]
+  payments  CreditPayment[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([branchId, name, vehicle])
+  @@index([branchId, active])
 }
 
 model CreditSale {
-  id          String         @id @default(cuid())
+  id          String          @id @default(cuid())
   branchId    String
+  shiftId     String?
   customerId  String
   productId   String
+  date        String
   litres      Float
   amountPaisa Int
-  paidPaisa   Int            @default(0)
-  status      String // Due | Partial | Paid
+  paidPaisa   Int             @default(0)
+  status      String // DUE | PARTIAL | PAID | VOID
   dueDate     String
-  customer    CreditCustomer @relation(fields: [customerId], references: [id])
-  product     Product        @relation(fields: [productId], references: [id])
-  createdAt   DateTime       @default(now())
+  branch      Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  shift       Shift?          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  customer    CreditCustomer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  product     Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  payments    CreditPayment[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([branchId, date])
+  @@index([customerId, status, dueDate])
 }
 
-// ---- Inventory / variance engine ------------------------------------------
+model CreditPayment {
+  id           String         @id @default(cuid())
+  branchId     String
+  customerId   String
+  creditSaleId String?
+  date         String
+  amountPaisa  Int
+  method       String // CASH | CARD | BANK_TRANSFER | OTHER
+  reference    String?
+  notes        String?
+  branch       Branch         @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  customer     CreditCustomer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  creditSale   CreditSale?    @relation(fields: [creditSaleId], references: [id], onDelete: Restrict)
+  createdAt    DateTime       @default(now())
+
+  @@index([branchId, date])
+  @@index([customerId, date])
+  @@index([creditSaleId])
+}
+
+// ---- Pricing, inventory, and variance -----------------------------------
 
 model FuelPrice {
-  id            String   @id @default(cuid())
-  branchId      String
-  productId     String
-  ratePaisa     Int
-  effectiveFrom String // ISO date
-  product       Product  @relation(fields: [productId], references: [id])
-  createdAt     DateTime @default(now())
+  id                    String          @id @default(cuid())
+  branchId              String
+  productId             String
+  ratePaisa             Int
+  dealerMarginPaisaPerL Int
+  purchaseCostPaisaPerL Int?
+  effectiveFrom         String
+  source                String          @default("MANUAL")
+  notes                 String?
+  branch                Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  product               Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  readings              NozzleReading[]
+  createdAt             DateTime        @default(now())
+
+  @@unique([branchId, productId, effectiveFrom])
+  @@index([branchId, effectiveFrom])
+  @@index([productId])
 }
 
 model StockMove {
   id        String   @id @default(cuid())
   branchId  String
   tankId    String
-  type      String // DELIVERY | SALE | ADJUST
-  litres    Float // signed: + for delivery, - for sale
+  type      String // OPENING | DELIVERY | SALE | ADJUSTMENT
+  litres    Float // signed: positive in, negative out
   refId     String?
+  reason    String?
   at        DateTime @default(now())
-  tank      Tank     @relation(fields: [tankId], references: [id])
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  tank      Tank     @relation(fields: [tankId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@index([branchId, at])
+  @@index([tankId, at])
+  @@index([type, refId])
 }
 
 model VarianceLog {
@@ -278,21 +470,36 @@ model VarianceLog {
   varianceL   Float
   variancePct Float
   flagged     Boolean
-  tank        Tank     @relation(fields: [tankId], references: [id])
+  status      String   @default("OPEN") // OPEN | EXPLAINED | RESOLVED
+  explanation String?
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  tank        Tank     @relation(fields: [tankId], references: [id], onDelete: Restrict)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([branchId, tankId, date])
+  @@index([branchId, date, flagged])
 }
 
-// ---- Audit ----------------------------------------------------------------
+// ---- Audit ---------------------------------------------------------------
 
 model AuditLog {
-  id       String   @id @default(cuid())
-  userId   String?
-  userName String?
-  action   String
-  entity   String
-  entityId String?
-  branchId String?
-  before   String? // JSON
-  after    String? // JSON
-  at       DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String?
+  action    String
+  entity    String
+  entityId  String?
+  branchId  String?
+  before    Json?
+  after     Json?
+  ipAddress String?
+  userAgent String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  at        DateTime @default(now())
+
+  @@index([branchId, at])
+  @@index([entity, entityId])
+  @@index([userId, at])
 }

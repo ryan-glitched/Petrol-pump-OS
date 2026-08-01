@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { asPaisa, formatPKR, formatSignedPKR, toRupees, type Paisa } from "@/lib/money";
 import { getTankLevels } from "@/lib/queries/inventory";
+import { fuelGrossMarginPaisa } from "@/lib/domain/pricing";
 
 const PRODUCT_COLORS: Record<string, string> = {
   "Hi Super": "#16a34a",
@@ -57,9 +58,12 @@ export async function getDashboard(branchId: string): Promise<DashboardData> {
 
   const todayRevenue = asPaisa(todaySales.reduce((sum, s) => sum + s.totalPaisa, 0));
   const todayLitres = todayReadings.reduce((sum, r) => sum + r.litres, 0);
-  const todayFuelAmount = todayReadings.reduce((sum, r) => sum + r.amountPaisa, 0);
-  // Gross profit estimate: ~16% fuel margin (purchase ~0.84 of pump) + actual mobil margin.
-  const todayProfit = asPaisa(Math.round(todayFuelAmount * 0.16) + todayMobil.reduce((sum, m) => sum + m.profitPaisa, 0));
+  const todayFuelMargin = todayReadings.reduce(
+    (sum, reading) =>
+      sum + fuelGrossMarginPaisa(reading.litres, asPaisa(reading.dealerMarginPaisaPerL)),
+    0,
+  );
+  const todayProfit = asPaisa(todayFuelMargin + todayMobil.reduce((sum, m) => sum + m.profitPaisa, 0));
   const todayDiff = asPaisa(todaySales.reduce((sum, s) => sum + s.diffPaisa, 0));
 
   const flagged = varianceLogs.filter((v) => v.flagged);
@@ -67,7 +71,7 @@ export async function getDashboard(branchId: string): Promise<DashboardData> {
   const kpis = [
     { label: "Today's revenue", value: formatPKR(todayRevenue), sub: latestDate ?? "No data yet" },
     { label: "Litres sold today", value: `${todayLitres.toLocaleString()} L`, sub: `${todayReadings.length} nozzle readings` },
-    { label: "Est. gross profit", value: formatPKR(todayProfit), sub: "Fuel margin + lubricants" },
+    { label: "Est. gross profit", value: formatPKR(todayProfit), sub: "Recorded Rs/L margin + lubricants" },
     { label: "Cash variance", value: formatSignedPKR(todayDiff), sub: todayDiff === 0 ? "Balanced" : "Drawer vs cash sales" },
   ];
 

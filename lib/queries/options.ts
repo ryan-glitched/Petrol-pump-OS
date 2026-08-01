@@ -33,12 +33,19 @@ export async function shiftOptions(branchId: string): Promise<Option[]> {
   return shifts.map((s) => ({ value: s.id, label: `${s.date} · ${s.shiftSlot}` }));
 }
 
-export async function priceOptionsWithCurrent(branchId: string): Promise<{ productId: string; product: string; current: string }[]> {
+export async function priceOptionsWithCurrent(
+  branchId: string,
+): Promise<{ productId: string; product: string; current: string; margin: string }[]> {
   const products = await prisma.product.findMany({ where: { kind: "FUEL" }, orderBy: { name: "asc" } });
-  const out: { productId: string; product: string; current: string }[] = [];
+  const out: { productId: string; product: string; current: string; margin: string }[] = [];
   for (const p of products) {
     const latest = await prisma.fuelPrice.findFirst({ where: { branchId, productId: p.id }, orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }] });
-    out.push({ productId: p.id, product: p.name, current: latest ? `${formatPKR(asPaisa(latest.ratePaisa))} / L` : "Not set" });
+    out.push({
+      productId: p.id,
+      product: p.name,
+      current: latest ? `${formatPKR(asPaisa(latest.ratePaisa))} / L` : "Not set",
+      margin: latest ? `${formatPKR(asPaisa(latest.dealerMarginPaisaPerL))} / L` : "Not set",
+    });
   }
   return out;
 }

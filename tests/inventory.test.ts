@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { lowStock, tankBalanceL } from "@/lib/domain/inventory";
-import { rateForProductOn } from "@/lib/domain/pricing";
+import { fuelGrossMarginPaisa, rateForProductOn } from "@/lib/domain/pricing";
+import { toPaisa } from "@/lib/money";
 
 const tank = { capacityL: 42000, safeLevelL: 12000 };
 
@@ -44,5 +45,15 @@ describe("rateForProductOn", () => {
 
   it("returns null when no price applies yet", () => {
     expect(rateForProductOn(prices, "p2", "2026-06-05")).toBeNull();
+  });
+});
+
+describe("fuelGrossMarginPaisa", () => {
+  it("uses the recorded rupees-per-litre margin instead of a percentage", () => {
+    expect(fuelGrossMarginPaisa(1_250, toPaisa(7))).toBe(toPaisa(8_750));
+  });
+
+  it("supports a future margin change without changing the formula", () => {
+    expect(fuelGrossMarginPaisa(1_250, toPaisa(8.25))).toBe(toPaisa(10_312.5));
   });
 });

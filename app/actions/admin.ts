@@ -15,8 +15,23 @@ export async function createFuelPrice(_prev: ActionState, formData: FormData): P
     const parsed = parseForm(fuelPriceInput, formData);
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
+    const product = await prisma.product.findFirst({
+      where: { id: d.productId, kind: "FUEL", active: true },
+      select: { id: true },
+    });
+    if (!product) return { ok: false, errors: { productId: "Select an active fuel product" } };
+    const ratePaisa = toPaisa(d.rate);
+    const dealerMarginPaisaPerL = toPaisa(d.dealerMargin);
     const row = await prisma.fuelPrice.create({
-      data: { branchId, productId: d.productId, ratePaisa: toPaisa(d.rate), effectiveFrom: d.effectiveFrom },
+      data: {
+        branchId,
+        productId: d.productId,
+        ratePaisa,
+        dealerMarginPaisaPerL,
+        purchaseCostPaisaPerL: ratePaisa - dealerMarginPaisaPerL,
+        effectiveFrom: d.effectiveFrom,
+        source: "MANUAL",
+      },
     });
     await writeAudit({ session, action: "create", entity: "FuelPrice", entityId: row.id, branchId, after: row });
     revalidatePath("/settings");

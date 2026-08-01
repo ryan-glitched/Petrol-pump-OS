@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import type { SessionUser } from "@/lib/auth/session";
 
 type AuditArgs = {
@@ -13,6 +14,9 @@ type AuditArgs = {
 
 /** Append-only audit trail: who did what, when, to which record. */
 export async function writeAudit(args: AuditArgs): Promise<void> {
+  const asJson = (value: unknown): Prisma.InputJsonValue | undefined =>
+    value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+
   await prisma.auditLog.create({
     data: {
       userId: args.session?.userId,
@@ -21,8 +25,8 @@ export async function writeAudit(args: AuditArgs): Promise<void> {
       entity: args.entity,
       entityId: args.entityId,
       branchId: args.branchId,
-      before: args.before === undefined ? undefined : JSON.stringify(args.before),
-      after: args.after === undefined ? undefined : JSON.stringify(args.after),
+      before: asJson(args.before),
+      after: asJson(args.after),
     },
   });
 }

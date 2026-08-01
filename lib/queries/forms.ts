@@ -117,6 +117,7 @@ export function expenseFields(): FieldDef[] {
 export async function creditFields(branchId: string): Promise<FieldDef[]> {
   const products = await productOptions(branchId, "FUEL");
   return [
+    { name: "date", label: "Sale date", type: "date", required: true, defaultValue: todayISO() },
     { name: "customerName", label: "Customer name", type: "text", required: true },
     { name: "vehicleNumber", label: "Vehicle number", type: "text", required: true },
     { name: "productId", label: "Fuel", type: "select", required: true, options: products },
@@ -142,6 +143,7 @@ export async function fuelPriceFields(branchId: string): Promise<FieldDef[]> {
   return [
     { name: "productId", label: "Fuel", type: "select", required: true, options: products },
     { name: "rate", label: "Rate (PKR/L)", type: "number", required: true, step: "0.01" },
+    { name: "dealerMargin", label: "Dealer margin (PKR/L)", type: "number", required: true, step: "0.01", defaultValue: "7" },
     { name: "effectiveFrom", label: "Effective from", type: "date", required: true, defaultValue: todayISO() },
   ];
 }

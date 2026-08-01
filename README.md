@@ -1,41 +1,33 @@
 # PetrolPumpOS
 
-PetrolPumpOS is a frontend-first petrol pump ERP and analytics prototype for **PGL / PARCO Gunvor Limited**. It is built for Shahid Mohsin as a premium working V1 interface for station operations, finance, inventory, reports, and forecasting previews.
+PetrolPumpOS is a Next.js petrol pump ERP and analytics V1 for station operations, fuel inventory, reconciliation, reporting, and forecasting. It is being proven at one PGL station before becoming a multi-station SaaS product.
 
-This version uses realistic dummy data only. It does not include a real backend, database, authentication system, or live AI.
+## Current capabilities
 
-## Included
+- Secure login with branch-scoped roles
+- PostgreSQL database through Prisma
+- Shift, nozzle-reading, tank-dip, delivery, sales, expense, lubricant, credit, and staff workflows
+- Effective-dated fuel prices and dealer margin in PKR per litre
+- Tank stock and book-vs-dip variance calculations
+- Dashboard, CSV reports, audit logging, and forecasting preview
+- Responsive Next.js interface
 
-- Multi-branch app shell with branch switching
-- Mock role structure: Super Admin, Owner, Manager, Cashier, Staff/Filler
-- Dashboard overview with revenue, litres, product sales, cash/card/credit, profit, tank levels, alerts, and recommendations
-- Login screen with mock role selector
-- Shift management
-- Nozzle readings entry with auto-calculated litres and amount
-- Tank dip readings
-- Fuel deliveries / stock-in with total cost preview
-- Sales entry with cash/card/credit totals and cash difference
-- Mobil oil sales with profit calculation
-- Expenses with receipt upload placeholder
-- Credit customer ledger
-- Inventory and tank stock views
-- Reports library and report preview table
-- Forecasting preview with dummy demand data
-- Staff management
-- Branch/station management
-- Settings preview
+Demo seed data is fictional and must not be confused with live pump records.
 
-## Tech Stack
+## Technology
 
-- Next.js App Router
-- React
-- TypeScript
-- Tailwind CSS
-- Recharts
-- Lucide React icons
-- Local mock data
+- Next.js, React, TypeScript, and Tailwind CSS
+- PostgreSQL
+- Prisma ORM
+- Zod validation
+- Vitest
 
-## Setup
+## Local setup
+
+Requirements:
+
+- Node.js 20 or newer
+- A PostgreSQL database, local or managed
 
 Install dependencies:
 
@@ -43,49 +35,64 @@ Install dependencies:
 npm install
 ```
 
-Start the development server:
+Create `.env` from `.env.example` and provide a real PostgreSQL `DATABASE_URL` and random `AUTH_SECRET`.
+
+Create the tables and load fictional demo data:
+
+```bash
+npm run db:deploy
+npm run db:seed
+```
+
+Start the application:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in a browser.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Production Build
+## Database commands
 
 ```bash
-npm run build
-npm start
+npm run prisma:generate
+npm run db:migrate -- --name describe_the_change
+npm run db:deploy
+npm run db:status
+npm run db:studio
+npm run db:seed
 ```
 
-## Project Control Room
+Read [docs/database-v1.md](docs/database-v1.md) before changing the production schema.
 
-Use GitHub and Git as the control room for PetrolPumpOS.
+## Verification
 
-- `main` is the stable working version.
-- `dev` is the testing and integration version.
-- `feature/dashboard` is for dashboard work.
-- `feature/data-entry` is for pump data entry workflows.
-- `feature/forecasting` is for demand forecasting and AI planning.
-- Codex should work on one feature branch at a time.
-- Feature branches merge into `dev` after they work.
-- `dev` merges into `main` only after it is stable.
-- Never make risky or direct feature edits on `main`.
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
 
-## Project Structure
+## Git workflow
+
+- `main`: stable release
+- `dev`: tested integration version
+- `codex/*` or `feature/*`: isolated work branches
+
+Changes go from a feature branch to `dev`, and from stable `dev` to `main`. Database migrations must be committed alongside the schema change that created them.
+
+## Project structure
 
 ```text
-app/                    Next.js routes
-components/charts/       Recharts visualizations
-components/dashboard/    Dashboard widgets
-components/forms/        Data-entry and module page components
-components/shell/        Sidebar, top bar, branch and role selectors
-components/ui/           Cards, badges, buttons, tables
-data/                    Dummy station, sales, inventory, staff, and forecast data
-lib/                     Formatting and utility helpers
-types/                   Shared TypeScript types
+app/                 Next.js routes and server actions
+components/          UI, forms, charts, and dashboard
+lib/                 Domain rules, auth, queries, reports, and validation
+prisma/              PostgreSQL schema, migrations, and demo seed
+tests/               Business-rule tests
+docs/                Design and operating documentation
 ```
 
-## Important
+## V1 boundary
 
-All values, customers, staff names, alerts, forecasts, and station records are sample data. Replace them only after a real database and access-control layer are designed.
+This release is building the trustworthy operational core. Real AI recommendations, WhatsApp automation, subscription billing, and broad SaaS administration come after the real-data field trial.

@@ -48,6 +48,7 @@ async function main() {
   await prisma.auditLog.deleteMany();
   await prisma.varianceLog.deleteMany();
   await prisma.stockMove.deleteMany();
+  await prisma.creditPayment.deleteMany();
   await prisma.creditSale.deleteMany();
   await prisma.creditCustomer.deleteMany();
   await prisma.mobilOilSale.deleteMany();
@@ -55,6 +56,7 @@ async function main() {
   await prisma.salesEntry.deleteMany();
   await prisma.tankDip.deleteMany();
   await prisma.nozzleReading.deleteMany();
+  await prisma.shiftAssignment.deleteMany();
   await prisma.shift.deleteMany();
   await prisma.delivery.deleteMany();
   await prisma.fuelPrice.deleteMany();
@@ -66,10 +68,19 @@ async function main() {
   await prisma.staff.deleteMany();
   await prisma.product.deleteMany();
   await prisma.branch.deleteMany();
+  await prisma.organization.deleteMany();
 
-  // ---- branches -----------------------------------------------------------
+  // ---- organization + branches ------------------------------------------
+  const organization = await prisma.organization.create({
+    data: {
+      name: "PGL Fuel Stations",
+      legalName: "PGL Fuel Stations Pakistan",
+    },
+  });
+
   const main = await prisma.branch.create({
     data: {
+      organizationId: organization.id,
       name: "PGL Main Station",
       company: "PGL / PARCO Gunvor Limited",
       city: "Pakistan",
@@ -80,6 +91,7 @@ async function main() {
   });
   const future = await prisma.branch.create({
     data: {
+      organizationId: organization.id,
       name: "Future Branch Template",
       company: "PGL / PARCO Gunvor Limited",
       city: "Future Expansion",
@@ -165,18 +177,50 @@ async function main() {
 
   // ---- fuel prices (with a mid-range change to exercise history) ----------
   const start = addDays(TODAY, -21);
+  const DEALER_MARGIN_PAISA_PER_L = PKR(7);
   const priceDefs = [
     { productId: hiSuper.id, rate: 168, changeRate: 170, changeOn: addDays(TODAY, -10) },
     { productId: hobc.id, rate: 198, changeRate: 200, changeOn: addDays(TODAY, -10) },
     { productId: diesel.id, rate: 121, changeRate: 122.5, changeOn: addDays(TODAY, -10) },
   ];
+  const pricesByProduct = new Map<
+    string,
+    Array<{
+      id: string;
+      ratePaisa: number;
+      dealerMarginPaisaPerL: number;
+      purchaseCostPaisaPerL: number | null;
+      effectiveFrom: string;
+    }>
+  >();
   for (const p of priceDefs) {
-    await prisma.fuelPrice.create({ data: { branchId: main.id, productId: p.productId, ratePaisa: PKR(p.rate), effectiveFrom: start } });
-    await prisma.fuelPrice.create({ data: { branchId: main.id, productId: p.productId, ratePaisa: PKR(p.changeRate), effectiveFrom: p.changeOn } });
+    const first = await prisma.fuelPrice.create({
+      data: {
+        branchId: main.id,
+        productId: p.productId,
+        ratePaisa: PKR(p.rate),
+        dealerMarginPaisaPerL: DEALER_MARGIN_PAISA_PER_L,
+        purchaseCostPaisaPerL: PKR(p.rate) - DEALER_MARGIN_PAISA_PER_L,
+        effectiveFrom: start,
+        source: "DEMO_SEED",
+      },
+    });
+    const changed = await prisma.fuelPrice.create({
+      data: {
+        branchId: main.id,
+        productId: p.productId,
+        ratePaisa: PKR(p.changeRate),
+        dealerMarginPaisaPerL: DEALER_MARGIN_PAISA_PER_L,
+        purchaseCostPaisaPerL: PKR(p.changeRate) - DEALER_MARGIN_PAISA_PER_L,
+        effectiveFrom: p.changeOn,
+        source: "DEMO_SEED",
+      },
+    });
+    pricesByProduct.set(p.productId, [first, changed]);
   }
-  function rateOn(productId: string, date: string): number {
-    const def = priceDefs.find((p) => p.productId === productId)!;
-    return PKR(date >= def.changeOn ? def.changeRate : def.rate);
+  function priceOn(productId: string, date: string) {
+    const prices = pricesByProduct.get(productId) ?? [];
+    return prices.filter((price) => price.effectiveFrom <= date).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
   }
 
   // ---- daily operational loop --------------------------------------------
@@ -214,8 +258,9 @@ async function main() {
       if (dipLevel[t.id] < t.safeLevelL * 1.4 && rand() > 0.3) {
         const qty = t.id === tank1.id ? 24000 : 12000;
         const productId = t.productId;
-        const rate = rateOn(productId, date);
-        const costRate = Math.round(rate * 0.84); // purchase < pump price
+        const fuelPrice = priceOn(productId, date);
+        if (!fuelPrice) throw new Error(`Missing fuel price for ${productId} on ${date}`);
+        const costRate = fuelPrice.purchaseCostPaisaPerL ?? fuelPrice.ratePaisa - fuelPrice.dealerMarginPaisaPerL;
         const delivery = await prisma.delivery.create({
           data: {
             branchId: main.id,
@@ -263,8 +308,9 @@ async function main() {
         const opening = nz.meter;
         const closing = opening + litres;
         nz.meter = closing;
-        const rate = rateOn(nz.productId, date);
-        const amount = rate * litres;
+        const fuelPrice = priceOn(nz.productId, date);
+        if (!fuelPrice) throw new Error(`Missing fuel price for ${nz.productId} on ${date}`);
+        const amount = fuelPrice.ratePaisa * litres;
         const filler = fillers[Math.floor(rand() * fillers.length)];
         await prisma.nozzleReading.create({
           data: {
@@ -272,10 +318,12 @@ async function main() {
             shiftId: shift.id,
             nozzleId: nz.id,
             productId: nz.productId,
+            fuelPriceId: fuelPrice.id,
             opening,
             closing,
             litres,
-            ratePaisa: rate,
+            ratePaisa: fuelPrice.ratePaisa,
+            dealerMarginPaisaPerL: fuelPrice.dealerMarginPaisaPerL,
             amountPaisa: amount,
             staffId: filler.id,
             date,
@@ -406,6 +454,7 @@ async function main() {
         branchId: main.id,
         customerId: customer.id,
         productId: c.productId,
+        date: TODAY,
         litres: c.litres,
         amountPaisa: amount,
         paidPaisa: Math.round(amount * c.paidPct),

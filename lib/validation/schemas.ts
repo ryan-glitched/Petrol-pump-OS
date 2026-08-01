@@ -11,7 +11,13 @@ import {
 // Inputs come from FormData, so numeric fields are coerced from strings.
 
 const id = z.string().min(1, "required");
-const isoDate = z.string().min(1, "Date is required");
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use date format YYYY-MM-DD")
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  }, "Enter a valid calendar date");
 const money = z.coerce.number().min(0, "Must be 0 or more"); // rupees at the edge -> paisa server-side
 const litres = z.coerce.number().min(0, "Must be 0 or more");
 
@@ -95,6 +101,7 @@ export const expenseInput = z.object({
 });
 
 export const creditSaleInput = z.object({
+  date: isoDate,
   customerName: z.string().min(1, "Customer name is required"),
   vehicleNumber: z.string().min(1, "Vehicle number is required"),
   productId: id,
@@ -112,11 +119,17 @@ export const staffInput = z.object({
   status: z.enum(STAFF_STATUSES),
 });
 
-export const fuelPriceInput = z.object({
-  productId: id,
-  rate: money.refine((v) => v > 0, "Rate must be greater than 0"),
-  effectiveFrom: isoDate,
-});
+export const fuelPriceInput = z
+  .object({
+    productId: id,
+    rate: money.refine((v) => v > 0, "Rate must be greater than 0"),
+    dealerMargin: money.refine((v) => v > 0, "Margin must be greater than 0"),
+    effectiveFrom: isoDate,
+  })
+  .refine((v) => v.dealerMargin < v.rate, {
+    path: ["dealerMargin"],
+    message: "Margin must be lower than the selling rate",
+  });
 
 export const loginInput = z.object({
   email: z.string().email("Enter a valid email"),
