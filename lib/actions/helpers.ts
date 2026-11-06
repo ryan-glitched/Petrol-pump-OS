@@ -50,8 +50,21 @@ export function duplicateMessage(target: unknown): string {
   return match?.message ?? "This entry has already been saved.";
 }
 
+/** Thrown inside an entry transaction when its shift was closed meanwhile. */
+export class ShiftClosedError extends Error {}
+
+/** Holds a shared lock on the shift for the rest of the transaction, so it can't be closed mid-save. */
+export async function assertShiftOpen(tx: Prisma.TransactionClient, shiftId: string | null | undefined): Promise<void> {
+  if (!shiftId) return;
+  const [shift] = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "Shift" WHERE "id" = ${shiftId} FOR SHARE`;
+  if (shift && shift.status !== "OPEN") throw new ShiftClosedError();
+}
+
 /** Map auth/forbidden/duplicate errors to friendly form messages; rethrow the rest. */
 export function toActionError(err: unknown): ActionState {
+  if (err instanceof ShiftClosedError) {
+    return { ok: false, errors: { shiftId: "This shift has been closed. Pick an open shift, or ask the Owner to reopen it." } };
+  }
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
     return { ok: false, message: duplicateMessage(err.meta?.target) };
   }

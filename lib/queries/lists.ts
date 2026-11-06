@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { asPaisa, formatPKR, formatSignedPKR } from "@/lib/money";
+import { checkShift, type ShiftTotals } from "@/lib/domain/shifts";
 
 export type Row = Record<string, string>;
 
@@ -12,15 +13,45 @@ const PAGE = 100;
 
 export async function listShifts(branchId: string): Promise<Row[]> {
   const names = await staffNameMap(branchId);
-  const rows = await prisma.shift.findMany({ where: { branchId }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
-  return rows.map((s) => ({
-    date: s.date,
-    shift: s.shiftSlot,
-    manager: s.managerId ? names.get(s.managerId) ?? "—" : "—",
-    cashier: s.cashierId ? names.get(s.cashierId) ?? "—" : "—",
-    openingCash: formatPKR(asPaisa(s.openingCashPaisa)),
-    closingCash: formatPKR(asPaisa(s.closingCashPaisa)),
-  }));
+  const rows = await prisma.shift.findMany({
+    where: { branchId },
+    include: {
+      readings: { where: { voidedAt: null }, select: { litres: true, amountPaisa: true } },
+      sales: { where: { voidedAt: null } },
+      creditSales: { where: { status: { not: "VOID" } }, select: { amountPaisa: true } },
+    },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    take: PAGE,
+  });
+  return rows.map((s) => {
+    const totals = shiftTotals(s);
+    const check = checkShift(totals);
+    return {
+      date: s.date,
+      shift: s.shiftSlot,
+      status: s.status,
+      manager: s.managerId ? names.get(s.managerId) ?? "—" : "—",
+      cashier: s.cashierId ? names.get(s.cashierId) ?? "—" : "—",
+      meter: `${totals.meterLitres.toLocaleString()} L · ${formatPKR(asPaisa(totals.meterAmountPaisa))}`,
+      collected: totals.sales ? formatPKR(asPaisa(totals.sales.totalPaisa)) : "—",
+      gap: check.salesGapPaisa === null ? "—" : formatSignedPKR(asPaisa(check.salesGapPaisa)),
+      checks: check.problems.length ? check.problems.join("; ") : "OK",
+    };
+  });
+}
+
+export function shiftTotals(s: {
+  readings: { litres: number; amountPaisa: number }[];
+  sales: { totalPaisa: number; creditPaisa: number; diffPaisa: number }[];
+  creditSales: { amountPaisa: number }[];
+}): ShiftTotals {
+  const sale = s.sales[0];
+  return {
+    meterLitres: s.readings.reduce((sum, r) => sum + r.litres, 0),
+    meterAmountPaisa: s.readings.reduce((sum, r) => sum + r.amountPaisa, 0),
+    sales: sale ? { totalPaisa: sale.totalPaisa, creditPaisa: sale.creditPaisa, diffPaisa: sale.diffPaisa } : null,
+    creditLedgerPaisa: s.creditSales.reduce((sum, c) => sum + c.amountPaisa, 0),
+  };
 }
 
 export async function listNozzleReadings(branchId: string): Promise<Row[]> {
