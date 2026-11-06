@@ -41,6 +41,7 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
     const result = await prisma.$transaction(async (tx) => {
       let tankDay: { tankId: string; date: string } | null = null;
       let reverseL = 0;
+      let enteredAt = new Date();
       let before: unknown;
       if (kind === "reading") {
         const row = await tx.nozzleReading.findFirst({ where, include: { nozzle: { select: { tankId: true } } } });
@@ -48,6 +49,7 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
         before = row;
         tankDay = { tankId: row.nozzle.tankId, date: row.date };
         reverseL = row.litres;
+        enteredAt = row.createdAt;
       } else if (kind === "dip") {
         const row = await tx.tankDip.findFirst({ where });
         if (!row || (await tx.tankDip.updateMany({ where, data: stamp })).count === 0) return null;
@@ -59,6 +61,7 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
         before = row;
         tankDay = { tankId: row.tankId, date: row.date };
         reverseL = -row.quantityL;
+        enteredAt = row.createdAt;
       } else if (kind === "sales") {
         const row = await tx.salesEntry.findFirst({ where });
         if (!row || (await tx.salesEntry.updateMany({ where, data: stamp })).count === 0) return null;
@@ -71,10 +74,10 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
 
       if (tankDay && reverseL !== 0) {
         // Reverse the entry's own litres (not whatever move happens to reference it), dated at the original
-        // move so tank levels before and after later dips stay right.
+        // move (or, for old rows without one, when the entry was saved) so tank levels around later dips stay right.
         const original = await tx.stockMove.findFirst({ where: { refId: id, type: { in: ["SALE", "DELIVERY"] } } });
         await tx.stockMove.create({
-          data: { branchId, tankId: tankDay.tankId, type: "VOID", litres: reverseL, refId: id, reason, at: original?.at ?? new Date() },
+          data: { branchId, tankId: tankDay.tankId, type: "VOID", litres: reverseL, refId: id, reason, at: original?.at ?? enteredAt },
         });
       }
       return { tankDay, before };
