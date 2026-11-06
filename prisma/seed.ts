@@ -459,12 +459,16 @@ async function main() {
     { name: "Mohsin Farms", vehicle: "RIN-8872", productId: diesel.id, litres: 1180, rate: 122.5, status: "Paid", dueDate: addDays(TODAY, 1), paidPct: 1 },
   ];
   for (const c of creditDefs) {
-    const customer = await prisma.creditCustomer.create({ data: { branchId: main.id, name: c.name, vehicle: c.vehicle } });
+    const customer = await prisma.creditCustomer.create({
+      data: { branchId: main.id, name: c.name, vehicles: { create: [{ plate: c.vehicle }] } },
+      include: { vehicles: true },
+    });
     const amount = PKR(c.litres * c.rate);
     await prisma.creditSale.create({
       data: {
         branchId: main.id,
         customerId: customer.id,
+        vehicleId: customer.vehicles[0].id,
         productId: c.productId,
         date: TODAY,
         litres: c.litres,

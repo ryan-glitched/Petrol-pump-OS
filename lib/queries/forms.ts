@@ -1,5 +1,4 @@
 import {
-  CREDIT_STATUSES,
   EXPENSE_CATEGORIES,
   SHIFT_SLOTS,
   STAFF_ROLES,
@@ -111,20 +110,6 @@ export function expenseFields(): FieldDef[] {
     { name: "amount", label: "Amount (PKR)", type: "number", required: true, step: "1" },
     { name: "paidBy", label: "Paid by", type: "text", required: true },
     { name: "description", label: "Description", type: "textarea", required: true },
-  ];
-}
-
-export async function creditFields(branchId: string): Promise<FieldDef[]> {
-  const products = await productOptions(branchId, "FUEL");
-  return [
-    { name: "date", label: "Sale date", type: "date", required: true, defaultValue: todayISO() },
-    { name: "customerName", label: "Customer name", type: "text", required: true },
-    { name: "vehicleNumber", label: "Vehicle number", type: "text", required: true },
-    { name: "productId", label: "Fuel", type: "select", required: true, options: products },
-    { name: "litres", label: "Litres", type: "number", required: true, step: "0.01" },
-    { name: "amount", label: "Amount (PKR)", type: "number", required: true, step: "1" },
-    { name: "status", label: "Status", type: "select", required: true, options: enumOpts(CREDIT_STATUSES) },
-    { name: "dueDate", label: "Due date", type: "date", required: true, defaultValue: todayISO() },
   ];
 }
 
