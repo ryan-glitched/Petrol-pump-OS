@@ -1,17 +1,26 @@
 import { ModulePage } from "@/components/forms/module-page";
-import { fieldSets, mobilOilSales } from "@/data/mock";
+import { createMobilOilSale } from "@/app/actions/entries";
+import { can } from "@/lib/auth/guard";
+import { requireViewContext } from "@/lib/queries/context";
+import { mobilOilFields } from "@/lib/queries/forms";
+import { listMobilOil } from "@/lib/queries/lists";
 
-export default function MobilOilPage() {
+export default async function MobilOilPage() {
+  const ctx = await requireViewContext();
+  const [fields, rows] = await Promise.all([mobilOilFields(ctx.branchId), listMobilOil(ctx.branchId)]);
+
   return (
     <ModulePage
       eyebrow="Lubricants"
       title="Mobil oil sales"
       description="Track lubricant quantity, buying price, selling price, staff member, and profit."
       formTitle="Mobil oil sale"
-      formDescription="Profit auto-calculates from selling price minus purchase price multiplied by quantity."
-      fields={fieldSets.mobilOil}
+      formDescription="Profit is computed from selling minus purchase price times quantity."
+      fields={fields}
+      action={createMobilOilSale}
       mode="mobilOil"
-      rows={mobilOilSales}
+      canCreate={can(ctx.session.role, "mobilOil")}
+      rows={rows}
       columns={[
         { key: "date", label: "Date" },
         { key: "product", label: "Product" },

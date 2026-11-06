@@ -1,0 +1,70 @@
+{
+  "organization": {
+    "name": "PGL Fuel Stations"
+  },
+  "station": {
+    "name": "PGL Main Station",
+    "company": "PGL / PARCO Gunvor Limited",
+    "city": "CITY",
+    "managerName": "MANAGER NAME",
+    "varianceTolerancePct": 1
+  },
+  "owner": {
+    "name": "OWNER NAME"
+  },
+  "products": [
+    {
+      "name": "Hi Super",
+      "kind": "FUEL"
+    },
+    {
+      "name": "HOBC",
+      "kind": "FUEL"
+    },
+    {
+      "name": "Diesel",
+      "kind": "FUEL"
+    },
+    {
+      "name": "Mobil Oil",
+      "kind": "LUBE"
+    }
+  ],
+  "tanks": [
+    {
+      "name": "Tank 1",
+      "product": "Diesel",
+      "capacityL": 42000,
+      "safeLevelL": 12000
+    },
+    {
+      "name": "Tank 2",
+      "product": "Hi Super",
+      "capacityL": 21000,
+      "safeLevelL": 6500
+    }
+  ],
+  "dispensers": [
+    {
+      "label": "Dispenser 1",
+      "nozzles": [
+        {
+          "label": "Nozzle 1",
+          "tank": "Tank 1"
+        },
+        {
+          "label": "Nozzle 2",
+          "tank": "Tank 2"
+        }
+      ]
+    }
+  ],
+  "prices": [
+    {
+      "product": "Hi Super",
+      "rate": 265.45,
+      "dealerMargin": 7.87,
+      "effectiveFrom": "2026-11-01"
+    }
+  ]
+}

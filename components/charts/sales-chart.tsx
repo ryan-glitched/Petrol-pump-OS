@@ -15,16 +15,15 @@ import {
   YAxis,
   Cell,
 } from "recharts";
-import { paymentMix, productSales, sales7Days } from "@/data/mock";
 import { formatCurrency } from "@/lib/format";
 
 const pieColors = ["#16a34a", "#0284c7", "#f97316"];
 
-export function RevenueTrendChart() {
+export function RevenueTrendChart({ data }: { data: { date: string; revenue: number }[] }) {
   return (
     <div className="h-72">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={sales7Days}>
+        <AreaChart data={data}>
           <defs>
             <linearGradient id="revenue" x1="0" x2="0" y1="0" y2="1">
               <stop offset="5%" stopColor="#16a34a" stopOpacity={0.28} />
@@ -42,17 +41,17 @@ export function RevenueTrendChart() {
   );
 }
 
-export function ProductSalesChart() {
+export function ProductSalesChart({ data }: { data: { product: string; litres: number; color: string }[] }) {
   return (
     <div className="h-72">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={productSales}>
+        <BarChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="product" tickLine={false} axisLine={false} />
           <YAxis tickLine={false} axisLine={false} />
           <Tooltip />
           <Bar dataKey="litres" radius={[12, 12, 0, 0]}>
-            {productSales.map((entry) => (
+            {data.map((entry) => (
               <Cell fill={entry.color} key={entry.product} />
             ))}
           </Bar>
@@ -62,13 +61,13 @@ export function ProductSalesChart() {
   );
 }
 
-export function PaymentMixChart() {
+export function PaymentMixChart({ data }: { data: { name: string; value: number }[] }) {
   return (
     <div className="h-72">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
-          <Pie data={paymentMix} dataKey="value" nameKey="name" innerRadius={62} outerRadius={96} paddingAngle={4}>
-            {paymentMix.map((entry, index) => (
+          <Pie data={data} dataKey="value" nameKey="name" innerRadius={62} outerRadius={96} paddingAngle={4}>
+            {data.map((entry, index) => (
               <Cell fill={pieColors[index % pieColors.length]} key={entry.name} />
             ))}
           </Pie>

@@ -1,16 +1,25 @@
 import { ModulePage } from "@/components/forms/module-page";
-import { expenses, fieldSets } from "@/data/mock";
+import { createExpense } from "@/app/actions/entries";
+import { can } from "@/lib/auth/guard";
+import { requireViewContext } from "@/lib/queries/context";
+import { expenseFields } from "@/lib/queries/forms";
+import { listExpenses } from "@/lib/queries/lists";
 
-export default function ExpensesPage() {
+export default async function ExpensesPage() {
+  const ctx = await requireViewContext();
+  const rows = await listExpenses(ctx.branchId);
+
   return (
     <ModulePage
       eyebrow="Finance"
       title="Expenses"
-      description="Record operating expenses, who paid, descriptions, and future receipt upload placeholders."
+      description="Record operating expenses, who paid, and descriptions."
       formTitle="Expense entry"
-      formDescription="Simple validation keeps daily cash reporting cleaner."
-      fields={fieldSets.expense}
-      rows={expenses}
+      formDescription="Expenses feed daily cash reconciliation and reports."
+      fields={expenseFields()}
+      action={createExpense}
+      canCreate={can(ctx.session.role, "expenses")}
+      rows={rows}
       columns={[
         { key: "date", label: "Date" },
         { key: "category", label: "Category" },

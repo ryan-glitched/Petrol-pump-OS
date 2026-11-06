@@ -53,6 +53,19 @@ export type FormField = {
   required?: boolean;
 };
 
+// Form field bound to a server action / DB-derived options.
+export type FieldDef = {
+  name: string;
+  label: string;
+  type?: "text" | "number" | "date" | "select" | "textarea" | "password";
+  placeholder?: string;
+  options?: { value: string; label: string }[];
+  required?: boolean;
+  step?: string;
+  defaultValue?: string;
+  readOnly?: boolean;
+};
+
 export type SalesPoint = {
   date: string;
   revenue: number;

@@ -42,15 +42,23 @@ export function DataTable<T extends Record<string, unknown>>({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((row, index) => (
-              <tr className="transition hover:bg-emerald-50/40" key={index}>
-                {columns.map((column) => (
-                  <td className="whitespace-nowrap px-5 py-4 text-slate-700" key={String(column.key)}>
-                    {String(row[column.key] ?? "")}
-                  </td>
-                ))}
+            {rows.length === 0 ? (
+              <tr>
+                <td className="px-5 py-10 text-center text-sm font-semibold text-slate-400" colSpan={columns.length}>
+                  No records yet. Saved entries will appear here.
+                </td>
               </tr>
-            ))}
+            ) : (
+              rows.map((row, index) => (
+                <tr className="transition hover:bg-emerald-50/40" key={index}>
+                  {columns.map((column) => (
+                    <td className="whitespace-nowrap px-5 py-4 text-slate-700" key={String(column.key)}>
+                      {String(row[column.key] ?? "")}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
