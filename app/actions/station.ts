@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { requireCapability, scopedBranchId } from "@/lib/auth/guard";
 import { hashPassword } from "@/lib/auth/password";
 import { writeAudit } from "@/lib/audit";
+import { getTankLevels } from "@/lib/queries/inventory";
 import { type ActionState, parseForm, toActionError } from "@/lib/actions/helpers";
 import {
   dispenserInput,
@@ -58,6 +59,15 @@ export async function updateTank(_prev: ActionState, formData: FormData): Promis
     const safeLevelL = d.safeLevelL ?? before.safeLevelL;
     if (capacityL <= 0) return { ok: false, errors: { capacityL: "Capacity must be greater than 0" } };
     if (safeLevelL > capacityL) return { ok: false, errors: { safeLevelL: "Low-stock level can't exceed capacity" } };
+    if (capacityL < before.capacityL) {
+      const level = (await getTankLevels(branchId)).find((t) => t.id === before.id);
+      if (level && capacityL < level.currentL) {
+        return {
+          ok: false,
+          errors: { capacityL: `This tank currently holds about ${Math.round(level.currentL).toLocaleString("en-PK")} L, so capacity can't be lower than that.` },
+        };
+      }
+    }
     if (d.active === "false") {
       const live = await prisma.nozzle.count({ where: { tankId: before.id, active: true } });
       if (live > 0) return { ok: false, errors: { active: "Move or switch off this tank's nozzles first" } };
@@ -123,24 +133,33 @@ export async function updateNozzle(_prev: ActionState, formData: FormData): Prom
     if (d.tankId && d.tankId !== before.tankId) {
       tank = await prisma.tank.findFirst({ where: { id: d.tankId, branchId, active: true }, select: { id: true, productId: true } });
       if (!tank) return { ok: false, errors: { tankId: "Select a tank" } };
-      // Past variance is computed through nozzle -> tank, so moving a nozzle with history would rewrite old results.
-      const history = await prisma.nozzleReading.count({ where: { nozzleId: before.id } });
-      if (history > 0) {
-        return {
-          ok: false,
-          errors: { tankId: "This nozzle already has readings. Switch it off and add a new nozzle for the other tank." },
-        };
-      }
     }
-    const row = await prisma.nozzle.update({
-      where: { id: before.id },
-      data: {
-        label: d.label ?? before.label,
-        tankId: tank?.id ?? before.tankId,
-        productId: tank?.productId ?? before.productId,
-        active: d.active ? d.active === "true" : before.active,
-      },
+    const active = d.active ? d.active === "true" : before.active;
+    if (active && !tank) {
+      const current = await prisma.tank.findUnique({ where: { id: before.tankId }, select: { active: true } });
+      if (!current?.active) return { ok: false, errors: { tankId: "Its tank is switched off. Pick an active tank to switch this nozzle on." } };
+    }
+    const row = await prisma.$transaction(async (tx) => {
+      // Locks the nozzle so no reading can be saved between the history check and the move (see createNozzleReading).
+      await tx.$queryRaw`SELECT "id" FROM "Nozzle" WHERE "id" = ${before.id} FOR UPDATE`;
+      // Past variance is computed through nozzle -> tank, so moving a nozzle with history would rewrite old results.
+      if (tank && (await tx.nozzleReading.count({ where: { nozzleId: before.id } })) > 0) return null;
+      return tx.nozzle.update({
+        where: { id: before.id },
+        data: {
+          label: d.label ?? before.label,
+          tankId: tank?.id ?? before.tankId,
+          productId: tank?.productId ?? before.productId,
+          active,
+        },
+      });
     });
+    if (!row) {
+      return {
+        ok: false,
+        errors: { tankId: "This nozzle already has readings. Switch it off and add a new nozzle for the other tank." },
+      };
+    }
     await writeAudit({ session, action: "update", entity: "Nozzle", entityId: row.id, branchId, before, after: row });
     refresh();
     return { ok: true, message: "Nozzle updated." };
@@ -194,9 +213,13 @@ export async function updateUser(_prev: ActionState, formData: FormData): Promis
     }
     const before = await prisma.user.findFirst({
       where: { id: d.userId, branches: { some: { branchId } } },
-      select: { id: true, email: true, role: true, active: true },
+      select: { id: true, email: true, role: true, active: true, branches: { select: { branchId: true } } },
     });
     if (!before) return { ok: false, errors: { userId: "Select a login" } };
+    // Role and active status apply to every station the login can open, so all of them must be yours.
+    if (session.role !== "SuperAdmin" && before.branches.some((b) => !session.branchIds.includes(b.branchId))) {
+      return { ok: false, errors: { userId: "This login also works at a station you don't manage. Ask a Super Admin." } };
+    }
     if (before.role === "SuperAdmin" && session.role !== "SuperAdmin") {
       return { ok: false, errors: { userId: "Only a Super Admin can change this login." } };
     }
@@ -208,7 +231,15 @@ export async function updateUser(_prev: ActionState, formData: FormData): Promis
       data: { role, active, sessionVersion: { increment: 1 }, ...(active ? {} : { lockedUntil: null, failedLogins: 0 }) },
       select: { id: true, email: true, role: true, active: true },
     });
-    await writeAudit({ session, action: "update", entity: "User", entityId: row.id, branchId, before, after: row });
+    await writeAudit({
+      session,
+      action: "update",
+      entity: "User",
+      entityId: row.id,
+      branchId,
+      before: { id: before.id, email: before.email, role: before.role, active: before.active },
+      after: row,
+    });
     refresh();
     return { ok: true, message: `${row.email} updated and signed out of all devices.` };
   } catch (err) {

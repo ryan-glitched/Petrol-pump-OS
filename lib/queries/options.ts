@@ -5,7 +5,7 @@ export type Option = { value: string; label: string };
 
 export async function nozzleOptions(branchId: string): Promise<Option[]> {
   const nozzles = await prisma.nozzle.findMany({
-    where: { branchId, active: true, dispenser: { active: true } },
+    where: { branchId, active: true, dispenser: { active: true }, tank: { active: true } },
     include: { dispenser: true, product: true },
     orderBy: { label: "asc" },
   });
