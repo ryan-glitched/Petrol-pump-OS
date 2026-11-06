@@ -1,5 +1,7 @@
 "use server";
 
+import { SHIFT_SLOTS } from "@/lib/constants";
+
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireCapability, scopedBranchId } from "@/lib/auth/guard";
@@ -43,8 +45,12 @@ async function recordBelongsToBranch(
   const record =
     model === "shift"
       ? await prisma.shift.findFirst({
-          // Night shifts span midnight, so the shift may have started the previous day.
-          where: { id, branchId, ...(date ? { date: { in: [date, previousDay(date)] } } : {}) },
+          // The night shift spans midnight, so it may have started the previous day.
+          where: {
+            id,
+            branchId,
+            ...(date ? { OR: [{ date }, { date: previousDay(date), shiftSlot: SHIFT_SLOTS[1] }] } : {}),
+          },
           select: { id: true },
         })
       : await prisma.staff.findFirst({ where: { id, branchId, active: true }, select: { id: true } });
