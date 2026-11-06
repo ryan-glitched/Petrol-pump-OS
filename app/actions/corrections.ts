@@ -48,7 +48,7 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
       if (kind === "reading") {
         const row = await tx.nozzleReading.findFirst({ where, include: { nozzle: { select: { tankId: true } } } });
         if (!row || (await tx.nozzleReading.updateMany({ where, data: stamp })).count === 0) return null;
-        await assertShiftOpen(tx, row.shiftId);
+        await assertShiftOpen(tx, row.shiftId, { branchId, date: row.date });
         before = row;
         tankDay = { tankId: row.nozzle.tankId, date: row.date };
         reverseL = row.litres;
@@ -56,12 +56,13 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
       } else if (kind === "dip") {
         const row = await tx.tankDip.findFirst({ where });
         if (!row || (await tx.tankDip.updateMany({ where, data: stamp })).count === 0) return null;
-        await assertShiftOpen(tx, row.shiftId);
+        await assertShiftOpen(tx, row.shiftId, { branchId, date: row.date });
         before = row;
         tankDay = { tankId: row.tankId, date: row.date };
       } else if (kind === "delivery") {
         const row = await tx.delivery.findFirst({ where });
         if (!row || (await tx.delivery.updateMany({ where, data: stamp })).count === 0) return null;
+        await assertShiftOpen(tx, null, { branchId, date: row.date });
         before = row;
         tankDay = { tankId: row.tankId, date: row.date };
         reverseL = -row.quantityL;
@@ -69,11 +70,12 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
       } else if (kind === "sales") {
         const row = await tx.salesEntry.findFirst({ where });
         if (!row || (await tx.salesEntry.updateMany({ where, data: stamp })).count === 0) return null;
-        await assertShiftOpen(tx, row.shiftId);
+        await assertShiftOpen(tx, row.shiftId, { branchId, date: row.date });
         before = row;
       } else {
         const row = await tx.expense.findFirst({ where });
         if (!row || (await tx.expense.updateMany({ where, data: stamp })).count === 0) return null;
+        await assertShiftOpen(tx, null, { branchId, date: row.date });
         before = row;
       }
 

@@ -45,7 +45,13 @@ export function shiftTotals(s: {
   sales: { totalPaisa: number; creditPaisa: number; diffPaisa: number }[];
   creditSales: { amountPaisa: number }[];
 }): ShiftTotals {
-  const sale = s.sales[0];
+  const sale = s.sales.length
+    ? s.sales.reduce((a, b) => ({
+        totalPaisa: a.totalPaisa + b.totalPaisa,
+        creditPaisa: a.creditPaisa + b.creditPaisa,
+        diffPaisa: a.diffPaisa + b.diffPaisa,
+      }))
+    : null;
   return {
     meterLitres: s.readings.reduce((sum, r) => sum + r.litres, 0),
     meterAmountPaisa: s.readings.reduce((sum, r) => sum + r.amountPaisa, 0),

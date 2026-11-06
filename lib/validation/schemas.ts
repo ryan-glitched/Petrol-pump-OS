@@ -258,6 +258,7 @@ export const creditVehicleInput = z.object({
 
 export const creditSaleInput = z.object({
   date: isoDate,
+  shiftId: z.string().optional(),
   customerId: id,
   vehicleId: z.string().optional(),
   productId: id,

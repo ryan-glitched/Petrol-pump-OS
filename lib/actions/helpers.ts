@@ -53,17 +53,29 @@ export function duplicateMessage(target: unknown): string {
 /** Thrown inside an entry transaction when its shift was closed meanwhile. */
 export class ShiftClosedError extends Error {}
 
-/** Holds a shared lock on the shift for the rest of the transaction, so it can't be closed mid-save. */
-export async function assertShiftOpen(tx: Prisma.TransactionClient, shiftId: string | null | undefined): Promise<void> {
-  if (!shiftId) return;
-  const [shift] = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "Shift" WHERE "id" = ${shiftId} FOR SHARE`;
-  if (shift && shift.status !== "OPEN") throw new ShiftClosedError();
+/**
+ * Holds a shared lock on the entry's shift for the rest of the transaction, so it can't be closed mid-save.
+ * Entries without a shift are refused once any shift on that day is closed or approved.
+ */
+export async function assertShiftOpen(
+  tx: Prisma.TransactionClient,
+  shiftId: string | null | undefined,
+  day: { branchId: string; date: string },
+): Promise<void> {
+  if (shiftId) {
+    const [shift] = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "Shift" WHERE "id" = ${shiftId} FOR SHARE`;
+    if (shift && shift.status !== "OPEN") throw new ShiftClosedError();
+    return;
+  }
+  const closed = await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "Shift" WHERE "branchId" = ${day.branchId} AND "date" = ${day.date} AND "status" <> 'OPEN' FOR SHARE`;
+  if (closed.length > 0) throw new ShiftClosedError();
 }
 
 /** Map auth/forbidden/duplicate errors to friendly form messages; rethrow the rest. */
 export function toActionError(err: unknown): ActionState {
   if (err instanceof ShiftClosedError) {
-    return { ok: false, errors: { shiftId: "This shift has been closed. Pick an open shift, or ask the Owner to reopen it." } };
+    return { ok: false, errors: { shiftId: "That shift (or a shift on that day) has been closed. Pick an open shift, or ask the Owner to reopen it." } };
   }
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
     return { ok: false, message: duplicateMessage(err.meta?.target) };

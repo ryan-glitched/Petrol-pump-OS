@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireCapability, scopedBranchId } from "@/lib/auth/guard";
 import { writeAudit } from "@/lib/audit";
-import { type ActionState, parseForm, toActionError } from "@/lib/actions/helpers";
+import { type ActionState, parseForm, toActionError, assertShiftOpen } from "@/lib/actions/helpers";
 import { asPaisa, formatPKR, toPaisa } from "@/lib/money";
 import {
   addDaysISO,
@@ -170,13 +170,23 @@ export async function createCreditSale(_prev: ActionState, formData: FormData): 
     }
     const product = await prisma.product.findFirst({ where: { id: d.productId, kind: "FUEL", active: true }, select: { id: true } });
     if (!product) return { ok: false, errors: { productId: "Select an active fuel product" } };
+    if (d.shiftId) {
+      // The night shift spans midnight, so it may have started the previous day.
+      const shift = await prisma.shift.findFirst({
+        where: { id: d.shiftId, branchId, status: "OPEN", date: { in: [d.date, addDaysISO(d.date, -1)] } },
+        select: { id: true },
+      });
+      if (!shift) return { ok: false, errors: { shiftId: "Pick an open shift from this branch with the same date" } };
+    }
 
     const amountPaisa = toPaisa(d.amount);
     const { row, owedBefore } = await prisma.$transaction(async (tx) => {
+      await assertShiftOpen(tx, d.shiftId, { branchId, date: d.date });
       const owedBefore = (await openItems(tx, customer.id)).reduce((sum, i) => sum + outstanding(i), 0);
       const row = await tx.creditSale.create({
         data: {
           branchId,
+          shiftId: d.shiftId || null,
           customerId: customer.id,
           vehicleId: d.vehicleId || null,
           productId: d.productId,

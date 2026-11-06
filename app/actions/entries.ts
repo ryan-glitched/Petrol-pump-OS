@@ -108,6 +108,18 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     });
     const meterChange = d.meterChangeReason && d.meterChangeReason.length >= 5 && can(session.role, "voidEntries");
+    const next = await prisma.nozzleReading.findFirst({
+      where: { nozzleId: nozzle.id, voidedAt: null, date: { gt: d.date } },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+    if (next && !meterMatches(d.closingReading, next.opening) && !meterChange) {
+      return {
+        ok: false,
+        errors: {
+          closingReading: `Should be ${next.opening}, the opening reading already saved for ${next.date}. If the meter was reset or replaced, a Manager or Owner can save it with a reason.`,
+        },
+      };
+    }
     if (previous && !meterMatches(previous.closing, d.openingReading) && !meterChange) {
       return {
         ok: false,
@@ -135,7 +147,7 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
       const [locked] = await tx.$queryRaw<{ tankId: string; active: boolean }[]>`
         SELECT "tankId", "active" FROM "Nozzle" WHERE "id" = ${nozzle.id} FOR SHARE`;
       if (!locked?.active || locked.tankId !== nozzle.tankId) return null;
-      await assertShiftOpen(tx, d.shiftId);
+      await assertShiftOpen(tx, d.shiftId, { branchId, date: d.date });
       const reading = await tx.nozzleReading.create({
         data: {
           branchId,
@@ -196,7 +208,7 @@ export async function createTankDip(_prev: ActionState, formData: FormData): Pro
     }
 
     const row = await prisma.$transaction(async (tx) => {
-      await assertShiftOpen(tx, d.shiftId);
+      await assertShiftOpen(tx, d.shiftId, { branchId, date: d.date });
       return tx.tankDip.create({
         data: {
           branchId,
@@ -238,6 +250,7 @@ export async function createDelivery(_prev: ActionState, formData: FormData): Pr
     const costPaisa = Math.round(ratePaisa * d.quantity);
 
     const row = await prisma.$transaction(async (tx) => {
+      await assertShiftOpen(tx, null, { branchId, date: d.date });
       const delivery = await tx.delivery.create({
         data: {
           branchId,
@@ -287,7 +300,7 @@ export async function createSalesEntry(_prev: ActionState, formData: FormData): 
       cashInHandPaisa: toPaisa(d.cashInHand),
     });
     const row = await prisma.$transaction(async (tx) => {
-      await assertShiftOpen(tx, d.shiftId);
+      await assertShiftOpen(tx, d.shiftId, { branchId, date: d.date });
       return tx.salesEntry.create({
         data: {
           branchId,
