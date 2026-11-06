@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireCapability, scopedBranchId } from "@/lib/auth/guard";
 import { writeAudit } from "@/lib/audit";
@@ -24,6 +25,14 @@ import {
 } from "@/lib/validation/schemas";
 
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+const NAME_TAKEN: ActionState = { ok: false, errors: { name: "A customer with this name already exists" } };
+
+// The (branch, lower(name)) unique index catches a duplicate that slips past nameTaken in a race.
+function creditError(err: unknown): ActionState {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return NAME_TAKEN;
+  return toActionError(err);
+}
 
 function refresh() {
   revalidatePath("/credit-customers");
@@ -62,7 +71,7 @@ export async function createCreditCustomer(_prev: ActionState, formData: FormDat
     const parsed = parseForm(creditCustomerInput, formData);
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
-    if (await nameTaken(branchId, d.name)) return { ok: false, errors: { name: "A customer with this name already exists" } };
+    if (await nameTaken(branchId, d.name)) return NAME_TAKEN;
 
     const row = await prisma.creditCustomer.create({
       data: {
@@ -87,7 +96,7 @@ export async function createCreditCustomer(_prev: ActionState, formData: FormDat
     refresh();
     return { ok: true, message: `${row.name} added${row.vehicles.length ? ` with ${row.vehicles.length} vehicle(s)` : ""}.` };
   } catch (err) {
-    return toActionError(err);
+    return creditError(err);
   }
 }
 
@@ -100,9 +109,7 @@ export async function updateCreditCustomer(_prev: ActionState, formData: FormDat
     const d = parsed.data;
     const before = await prisma.creditCustomer.findFirst({ where: { id: d.customerId, branchId } });
     if (!before) return { ok: false, errors: { customerId: "Select a customer" } };
-    if (d.name && (await nameTaken(branchId, d.name, before.id))) {
-      return { ok: false, errors: { name: "A customer with this name already exists" } };
-    }
+    if (d.name && (await nameTaken(branchId, d.name, before.id))) return NAME_TAKEN;
     const cycle = (d.billingCycle ?? before.billingCycle) as BillingCycle;
     const row = await prisma.creditCustomer.update({
       where: { id: before.id },
@@ -113,7 +120,7 @@ export async function updateCreditCustomer(_prev: ActionState, formData: FormDat
         cnic: d.cnic ?? before.cnic,
         ntn: d.ntn ?? before.ntn,
         address: d.address ?? before.address,
-        creditLimitPaisa: d.creditLimit === undefined ? before.creditLimitPaisa : toPaisa(d.creditLimit),
+        creditLimitPaisa: d.removeLimit ? null : d.creditLimit === undefined ? before.creditLimitPaisa : toPaisa(d.creditLimit),
         billingCycle: cycle,
         billingDays: d.billingCycle || d.billingDays ? billingDaysFor(cycle, d.billingDays ?? before.billingDays) : before.billingDays,
         active: d.active ? d.active === "true" : before.active,
@@ -123,7 +130,7 @@ export async function updateCreditCustomer(_prev: ActionState, formData: FormDat
     refresh();
     return { ok: true, message: `${row.name} saved.` };
   } catch (err) {
-    return toActionError(err);
+    return creditError(err);
   }
 }
 

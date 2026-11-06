@@ -464,7 +464,7 @@ async function main() {
       include: { vehicles: true },
     });
     const amount = PKR(c.litres * c.rate);
-    await prisma.creditSale.create({
+    const sale = await prisma.creditSale.create({
       data: {
         branchId: main.id,
         customerId: customer.id,
@@ -478,6 +478,11 @@ async function main() {
         dueDate: c.dueDate,
       },
     });
+    if (sale.paidPaisa > 0) {
+      await prisma.creditPayment.create({
+        data: { branchId: main.id, customerId: customer.id, creditSaleId: sale.id, date: TODAY, amountPaisa: sale.paidPaisa, method: "Cash" },
+      });
+    }
   }
 
   const counts = {

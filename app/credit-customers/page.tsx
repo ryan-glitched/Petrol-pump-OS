@@ -221,6 +221,7 @@ export default async function CreditCustomersPage({ searchParams }: { searchPara
                 { name: "billingCycle", label: "Pays", type: "select", options: cycleOptions },
                 { name: "billingDays", label: "Days to pay (custom only)", type: "number", step: "1", placeholder: KEEP },
                 { name: "creditLimit", label: "Credit limit (PKR)", type: "number", step: "1", placeholder: KEEP },
+                { name: "removeLimit", label: "Remove credit limit", type: "select", options: [{ value: "true", label: "Yes – no limit" }] },
                 {
                   name: "active",
                   label: "Status",

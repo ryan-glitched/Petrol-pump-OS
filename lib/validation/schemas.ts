@@ -17,7 +17,8 @@ const isoDate = z
   .refine((value) => {
     const parsed = new Date(`${value}T00:00:00Z`);
     return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-  }, "Enter a valid calendar date");
+  }, "Enter a valid calendar date")
+  .refine((value) => value >= "2000-01-01" && value <= "2099-12-31", "Check the year");
 const money = z.coerce.number().min(0, "Must be 0 or more"); // rupees at the edge -> paisa server-side
 const litres = z.coerce.number().min(0, "Must be 0 or more");
 
@@ -242,6 +243,7 @@ export const creditCustomerUpdateInput = z
     ntn: optionalText,
     address: optionalText,
     creditLimit: optionalMoney,
+    removeLimit: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["true"]).optional()),
     billingCycle: optionalCycle,
     billingDays: optionalDays,
     active: optionalActive,

@@ -61,6 +61,9 @@ describe("credit inputs", () => {
   it("requires a date with an opening balance", () => {
     expect(creditCustomerInput.safeParse({ name: "A", billingCycle: "MONTHLY", openingBalance: "5000", openingDate: "" }).success).toBe(false);
   });
+  it("rejects an implausible year", () => {
+    expect(creditPaymentInput.safeParse({ date: "0008-03-01", customerId: "c", amount: "10", method: "Cash" }).success).toBe(false);
+  });
   it("rejects a zero payment", () => {
     expect(creditPaymentInput.safeParse({ date: "2026-03-01", customerId: "c", amount: "0", method: "Cash" }).success).toBe(false);
   });
