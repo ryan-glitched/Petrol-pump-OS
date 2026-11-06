@@ -36,16 +36,16 @@ const DASHBOARD_WINDOW_DAYS = 30;
 
 export async function getDashboard(branchId: string): Promise<DashboardData> {
   const [latestSale, latestReading] = await Promise.all([
-    prisma.salesEntry.findFirst({ where: { branchId }, orderBy: { date: "desc" }, select: { date: true } }),
-    prisma.nozzleReading.findFirst({ where: { branchId }, orderBy: { date: "desc" }, select: { date: true } }),
+    prisma.salesEntry.findFirst({ where: { branchId, voidedAt: null }, orderBy: { date: "desc" }, select: { date: true } }),
+    prisma.nozzleReading.findFirst({ where: { branchId, voidedAt: null }, orderBy: { date: "desc" }, select: { date: true } }),
   ]);
   const latestDate =
     [latestSale?.date, latestReading?.date].filter((d): d is string => Boolean(d)).sort().slice(-1)[0] ?? null;
   const window = latestDate ? { date: { gte: addDaysIso(latestDate, -DASHBOARD_WINDOW_DAYS) } } : {};
 
   const [sales, readings, mobil, tankLevels, varianceLogs] = await Promise.all([
-    prisma.salesEntry.findMany({ where: { branchId, ...window } }),
-    prisma.nozzleReading.findMany({ where: { branchId, ...window }, include: { product: true } }),
+    prisma.salesEntry.findMany({ where: { branchId, voidedAt: null, ...window } }),
+    prisma.nozzleReading.findMany({ where: { branchId, voidedAt: null, ...window }, include: { product: true } }),
     prisma.mobilOilSale.findMany({ where: { branchId, ...window } }),
     getTankLevels(branchId),
     prisma.varianceLog.findMany({ where: { branchId, ...window }, include: { tank: true }, orderBy: { date: "desc" } }),

@@ -20,6 +20,7 @@ import {
   Users,
   WalletCards,
   Wrench,
+  Eraser,
   type LucideIcon,
 } from "lucide-react";
 import type { NavItem } from "@/lib/nav";
@@ -35,6 +36,7 @@ const ICONS: Record<string, LucideIcon> = {
   PackagePlus,
   WalletCards,
   Wrench,
+  Eraser,
   Fuel,
   ReceiptText,
   CreditCard,

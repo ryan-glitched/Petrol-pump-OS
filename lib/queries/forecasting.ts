@@ -23,7 +23,7 @@ export type ForecastData = {
 /** Build per-product daily litre history and project 7 days forward. */
 export async function getForecast(branchId: string): Promise<ForecastData> {
   const readings = await prisma.nozzleReading.findMany({
-    where: { branchId },
+    where: { branchId, voidedAt: null },
     include: { product: true },
     orderBy: { date: "asc" },
   });

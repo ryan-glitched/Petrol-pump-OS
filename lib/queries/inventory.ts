@@ -28,7 +28,7 @@ export async function getTankLevels(branchId: string): Promise<TankLevel[]> {
   const levels: TankLevel[] = [];
   for (const tank of tanks) {
     const latestDip = await prisma.tankDip.findFirst({
-      where: { branchId, tankId: tank.id },
+      where: { branchId, tankId: tank.id, voidedAt: null },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     });
     let currentL: number;

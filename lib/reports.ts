@@ -43,7 +43,7 @@ export async function buildReport(
 
   switch (key) {
     case "daily-sales": {
-      const rows = await prisma.salesEntry.findMany({ where: { branchId, ...(date ? { date } : {}) }, orderBy: { date: "desc" } });
+      const rows = await prisma.salesEntry.findMany({ where: { branchId, voidedAt: null, ...(date ? { date } : {}) }, orderBy: { date: "desc" } });
       return {
         title: "Daily sales report",
         columns: ["Date", "Cash", "Card", "Credit", "Total", "Cash in drawer", "Difference"],
@@ -92,7 +92,7 @@ export async function buildReport(
       };
     }
     case "expenses": {
-      const rows = await prisma.expense.findMany({ where: { branchId, ...(date ? { date } : {}) }, orderBy: { date: "desc" } });
+      const rows = await prisma.expense.findMany({ where: { branchId, voidedAt: null, ...(date ? { date } : {}) }, orderBy: { date: "desc" } });
       return {
         title: "Expense report",
         columns: ["Date", "Category", "Amount", "Paid by", "Description"],
@@ -100,7 +100,7 @@ export async function buildReport(
       };
     }
     case "deliveries": {
-      const rows = await prisma.delivery.findMany({ where: { branchId, ...(date ? { date } : {}) }, include: { product: true, tank: true }, orderBy: { date: "desc" } });
+      const rows = await prisma.delivery.findMany({ where: { branchId, voidedAt: null, ...(date ? { date } : {}) }, include: { product: true, tank: true }, orderBy: { date: "desc" } });
       return {
         title: "Stock-in report",
         columns: ["Date", "Supplier", "Product", "Tank", "Quantity (L)", "Rate", "Total cost", "Invoice"],
