@@ -154,3 +154,55 @@ export type ExpenseInput = z.infer<typeof expenseInput>;
 export type CreditSaleInput = z.infer<typeof creditSaleInput>;
 export type StaffInput = z.infer<typeof staffInput>;
 export type FuelPriceInput = z.infer<typeof fuelPriceInput>;
+
+// ---- Station configuration (tanks, dispensers, nozzles, logins) -----------
+
+const optionalText = z.preprocess((v) => (v === "" ? undefined : v), z.string().trim().min(1).optional());
+const optionalNumber = z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().min(0, "Must be 0 or more").optional());
+const optionalActive = z.preprocess((v) => (v === "" ? undefined : v), z.enum(["true", "false"]).optional());
+
+export const tankInput = z
+  .object({
+    name: z.string().trim().min(1, "Name is required"),
+    productId: id,
+    capacityL: z.coerce.number().positive("Capacity must be greater than 0"),
+    safeLevelL: litres,
+  })
+  .refine((d) => d.safeLevelL <= d.capacityL, { path: ["safeLevelL"], message: "Low-stock level can't exceed capacity" });
+
+export const tankUpdateInput = z.object({
+  tankId: id,
+  name: optionalText,
+  capacityL: optionalNumber,
+  safeLevelL: optionalNumber,
+  active: optionalActive,
+});
+
+export const dispenserInput = z.object({ label: z.string().trim().min(1, "Name is required") });
+
+export const nozzleInput = z.object({
+  dispenserId: id,
+  label: z.string().trim().min(1, "Name is required"),
+  tankId: id,
+});
+
+export const nozzleUpdateInput = z.object({
+  nozzleId: id,
+  label: optionalText,
+  tankId: optionalText,
+  active: optionalActive,
+});
+
+export const LOGIN_ROLES = ["Owner", "Manager", "Cashier", "Filler"] as const;
+
+export const userInput = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  email: z.string().trim().toLowerCase().email("Enter a valid email"),
+  role: z.enum(LOGIN_ROLES),
+});
+
+export const userUpdateInput = z.object({
+  userId: id,
+  role: z.preprocess((v) => (v === "" ? undefined : v), z.enum(LOGIN_ROLES).optional()),
+  active: optionalActive,
+});
