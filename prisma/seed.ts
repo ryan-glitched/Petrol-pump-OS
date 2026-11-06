@@ -43,6 +43,13 @@ const SHIFT_1 = "Shift 1 (6:00 AM - 6:00 PM)";
 const SHIFT_2 = "Shift 2 (6:00 PM - 6:00 AM)";
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to run the demo seed with NODE_ENV=production.");
+  }
+  const realUsers = await prisma.user.count({ where: { NOT: { email: { endsWith: "@pgl.local" } } } });
+  if (realUsers > 0) {
+    throw new Error("Refusing to wipe a database that has real (non-demo) users. Use a separate database for demos.");
+  }
   console.log("Resetting database...");
   // Order matters for FK integrity.
   await prisma.auditLog.deleteMany();

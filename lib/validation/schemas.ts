@@ -47,19 +47,16 @@ export const nozzleReadingInput = z
     message: "Closing reading must be greater than or equal to opening reading",
   });
 
-export const tankDipInput = z
-  .object({
-    date: isoDate,
-    shiftId: z.string().optional(),
-    tankId: id,
-    openingDip: litres,
-    closingDip: litres,
-    notes: z.string().optional(),
-  })
-  .refine((v) => v.openingDip >= v.closingDip, {
-    path: ["closingDip"],
-    message: "Closing dip cannot exceed opening dip",
-  });
+// Closing dip may be higher than opening on delivery days; the variance engine
+// accounts for deliveries, so no ordering rule is enforced here.
+export const tankDipInput = z.object({
+  date: isoDate,
+  shiftId: z.string().optional(),
+  tankId: id,
+  openingDip: litres,
+  closingDip: litres,
+  notes: z.string().optional(),
+});
 
 export const deliveryInput = z.object({
   date: isoDate,
@@ -135,6 +132,17 @@ export const loginInput = z.object({
   email: z.string().email("Enter a valid email"),
   password: z.string().min(1, "Password is required"),
 });
+
+export const changePasswordInput = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password"),
+    newPassword: z.string().min(10, "Use at least 10 characters"),
+    confirmPassword: z.string().min(1, "Repeat the new password"),
+  })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match",
+  });
 
 export type ShiftInput = z.infer<typeof shiftInput>;
 export type NozzleReadingInput = z.infer<typeof nozzleReadingInput>;

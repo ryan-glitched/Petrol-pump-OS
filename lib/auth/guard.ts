@@ -6,8 +6,8 @@ import { prisma } from "@/lib/db";
 export { AuthError, ForbiddenError };
 
 /**
- * The JWT carries branchIds from login time; re-read them (and the active flag)
- * from the DB so admin-side access changes apply without waiting for re-login.
+ * The JWT carries identity from login time; re-read role, branchIds and the
+ * active flag from the DB so admin-side changes apply without waiting for re-login.
  * Returns null when unauthenticated or the account has been deactivated.
  */
 export async function getFreshSession(): Promise<SessionUser | null> {
@@ -15,10 +15,23 @@ export async function getFreshSession(): Promise<SessionUser | null> {
   if (!session) return null;
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { active: true, branches: { select: { branchId: true } } },
+    select: {
+      active: true,
+      name: true,
+      email: true,
+      role: true,
+      sessionVersion: true,
+      branches: { select: { branchId: true } },
+    },
   });
-  if (!user?.active) return null;
-  return { ...session, branchIds: user.branches.map((b) => b.branchId) };
+  if (!user?.active || user.sessionVersion !== session.sessionVersion) return null;
+  return {
+    ...session,
+    name: user.name,
+    email: user.email,
+    role: user.role as Role,
+    branchIds: user.branches.map((b) => b.branchId),
+  };
 }
 
 export function can(role: Role, capability: Capability): boolean {

@@ -8,6 +8,7 @@ export type SessionUser = {
   name: string;
   role: Role;
   branchIds: string[];
+  sessionVersion: number;
 };
 
 const COOKIE = "pp_session";
@@ -57,6 +58,7 @@ export async function getSession(): Promise<SessionUser | null> {
       name: String(payload.name),
       role: payload.role as Role,
       branchIds: (payload.branchIds as string[]) ?? [],
+      sessionVersion: Number(payload.sessionVersion ?? 0),
     };
   } catch {
     return null;

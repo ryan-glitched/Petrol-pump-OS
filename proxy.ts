@@ -23,6 +23,7 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Protect everything except Next internals, the API, and static assets.
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  // Protect everything except Next internals, the API, and public static assets
+  // (the phone needs the manifest and icons before login to install the app).
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|icon-|apple-touch-icon).*)"],
 };

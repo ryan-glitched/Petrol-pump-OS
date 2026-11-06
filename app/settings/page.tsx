@@ -3,6 +3,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { DataEntryForm } from "@/components/forms/data-entry-form";
 import { DataTable } from "@/components/ui/data-table";
 import { createFuelPrice, updateVarianceTolerance } from "@/app/actions/admin";
+import { changePassword } from "@/app/actions/auth";
 import { can } from "@/lib/auth/guard";
 import { requireViewContext } from "@/lib/queries/context";
 import { fuelPriceFields } from "@/lib/queries/forms";
@@ -95,6 +96,20 @@ export default async function SettingsPage() {
           />
         </div>
       ) : null}
+
+      <div className="mt-6">
+        <DataEntryForm
+          title="Change your password"
+          description="Signs you out on every other phone or computer."
+          fields={[
+            { name: "currentPassword", label: "Current password", type: "password", required: true },
+            { name: "newPassword", label: "New password (10+ characters)", type: "password", required: true },
+            { name: "confirmPassword", label: "Repeat new password", type: "password", required: true },
+          ]}
+          action={changePassword}
+          submitLabel="Change password"
+        />
+      </div>
 
       <Card className="mt-6">
         <h2 className="text-xl font-black">Role permissions</h2>

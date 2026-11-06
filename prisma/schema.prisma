@@ -31,16 +31,19 @@ model Organization {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  name         String
-  passwordHash String
-  role         String // SuperAdmin | Owner | Manager | Cashier | Filler
-  active       Boolean      @default(true)
-  branches     UserBranch[]
-  auditLogs    AuditLog[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String
+  passwordHash   String
+  role           String // SuperAdmin | Owner | Manager | Cashier | Filler
+  active         Boolean      @default(true)
+  sessionVersion Int          @default(0)
+  failedLogins   Int          @default(0)
+  lockedUntil    DateTime?
+  branches       UserBranch[]
+  auditLogs      AuditLog[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@index([active])
 }

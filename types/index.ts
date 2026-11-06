@@ -57,7 +57,7 @@ export type FormField = {
 export type FieldDef = {
   name: string;
   label: string;
-  type?: "text" | "number" | "date" | "select" | "textarea";
+  type?: "text" | "number" | "date" | "select" | "textarea" | "password";
   placeholder?: string;
   options?: { value: string; label: string }[];
   required?: boolean;

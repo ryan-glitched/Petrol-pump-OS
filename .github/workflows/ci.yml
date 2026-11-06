@@ -8,8 +8,22 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: petrolpumpos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
-      DATABASE_URL: "file:./dev.db"
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/petrolpumpos?schema=public"
     steps:
       - uses: actions/checkout@v4
       - name: Generate throwaway AUTH_SECRET
@@ -20,8 +34,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Prepare database
-        run: npx prisma db push
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+      - name: Check schema matches migrations
+        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "postgresql://postgres:postgres@localhost:5432/shadow" --exit-code
       - name: Lint
         run: npm run lint
       - name: Typecheck
