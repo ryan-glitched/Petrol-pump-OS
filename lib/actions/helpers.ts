@@ -67,9 +67,10 @@ export async function assertShiftOpen(
     if (shift && shift.status !== "OPEN") throw new ShiftClosedError();
     return;
   }
-  const closed = await tx.$queryRaw<{ id: string }[]>`
-    SELECT "id" FROM "Shift" WHERE "branchId" = ${day.branchId} AND "date" = ${day.date} AND "status" <> 'OPEN' FOR SHARE`;
-  if (closed.length > 0) throw new ShiftClosedError();
+  // Lock every shift of the day (open ones too), so a close waits for this entry to commit.
+  const shifts = await tx.$queryRaw<{ status: string }[]>`
+    SELECT "status" FROM "Shift" WHERE "branchId" = ${day.branchId} AND "date" = ${day.date} FOR SHARE`;
+  if (shifts.some((s) => s.status !== "OPEN")) throw new ShiftClosedError();
 }
 
 /** Map auth/forbidden/duplicate errors to friendly form messages; rethrow the rest. */

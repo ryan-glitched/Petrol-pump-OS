@@ -1,5 +1,6 @@
 "use server";
 
+import { SHIFT_SLOTS } from "@/lib/constants";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -173,7 +174,12 @@ export async function createCreditSale(_prev: ActionState, formData: FormData): 
     if (d.shiftId) {
       // The night shift spans midnight, so it may have started the previous day.
       const shift = await prisma.shift.findFirst({
-        where: { id: d.shiftId, branchId, status: "OPEN", date: { in: [d.date, addDaysISO(d.date, -1)] } },
+        where: {
+          id: d.shiftId,
+          branchId,
+          status: "OPEN",
+          OR: [{ date: d.date }, { date: addDaysISO(d.date, -1), shiftSlot: SHIFT_SLOTS[1] }],
+        },
         select: { id: true },
       });
       if (!shift) return { ok: false, errors: { shiftId: "Pick an open shift from this branch with the same date" } };
