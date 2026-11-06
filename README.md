@@ -47,8 +47,8 @@ npm run db:deploy
 cp prisma/station.example.json prisma/station.json
 OWNER_EMAIL=owner@example.com npm run db:setup -- prisma/station.json
 
-# OR demo data (wipes the database; refuses if real users exist or NODE_ENV=production)
-npm run db:seed
+# OR demo data on a throwaway database (wipes everything; refuses if a real station exists)
+DEMO_SEED=wipe npm run db:seed
 ```
 
 `db:setup` prints a one-time temporary owner password. Sign in and change it under Settings.

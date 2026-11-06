@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Download, FileText } from "lucide-react";
 import { AppShell } from "@/components/shell/app-shell";
@@ -15,6 +16,7 @@ export default async function ReportsPage({
   const ctx = await requireViewContext();
   const sp = await searchParams;
   const canRun = can(ctx.session.role, "runReports");
+  if (!can(ctx.session.role, "viewReports")) redirect("/");
 
   const activeKey: ReportKey = (REPORTS.find((r) => r.key === sp.report)?.key ?? "daily-sales") as ReportKey;
   const preview = await buildReport(ctx.branchId, activeKey, sp.from, sp.to);

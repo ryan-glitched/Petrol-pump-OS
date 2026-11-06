@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { Fuel, ShieldCheck } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
-import { getSession } from "@/lib/auth/session";
+import { getFreshSession } from "@/lib/auth/guard";
 
 export default async function LoginPage() {
-  if (await getSession()) redirect("/");
+  if (await getFreshSession()) redirect("/");
 
   return (
     <main className="grid min-h-screen bg-[#071827] text-white lg:grid-cols-[1fr_0.9fr]">

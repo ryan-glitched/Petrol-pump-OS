@@ -31,11 +31,12 @@ async function recordBelongsToBranch(
   model: "shift" | "staff",
   id: string | undefined,
   branchId: string,
+  date?: string,
 ): Promise<boolean> {
   if (!id) return true;
   const record =
     model === "shift"
-      ? await prisma.shift.findFirst({ where: { id, branchId }, select: { id: true } })
+      ? await prisma.shift.findFirst({ where: { id, branchId, ...(date ? { date } : {}) }, select: { id: true } })
       : await prisma.staff.findFirst({ where: { id, branchId, active: true }, select: { id: true } });
   return Boolean(record);
 }
@@ -85,8 +86,8 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
 
     const nozzle = await prisma.nozzle.findFirst({ where: { id: d.nozzleId, branchId } });
     if (!nozzle) return { ok: false, errors: { nozzleId: "Unknown nozzle for this branch" } };
-    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId))) {
-      return { ok: false, errors: { shiftId: "Shift does not belong to this branch" } };
+    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId, d.date))) {
+      return { ok: false, errors: { shiftId: "Pick a shift from this branch with the same date" } };
     }
     if (!(await recordBelongsToBranch("staff", d.staffId, branchId))) {
       return { ok: false, errors: { staffId: "Staff member is not active at this branch" } };
@@ -145,8 +146,8 @@ export async function createTankDip(_prev: ActionState, formData: FormData): Pro
     const d = parsed.data;
     const tank = await prisma.tank.findFirst({ where: { id: d.tankId, branchId } });
     if (!tank) return { ok: false, errors: { tankId: "Unknown tank for this branch" } };
-    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId))) {
-      return { ok: false, errors: { shiftId: "Shift does not belong to this branch" } };
+    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId, d.date))) {
+      return { ok: false, errors: { shiftId: "Pick a shift from this branch with the same date" } };
     }
 
     const row = await prisma.tankDip.create({
@@ -228,8 +229,8 @@ export async function createSalesEntry(_prev: ActionState, formData: FormData): 
     const parsed = parseForm(salesInput, formData);
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
-    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId))) {
-      return { ok: false, errors: { shiftId: "Shift does not belong to this branch" } };
+    if (!(await recordBelongsToBranch("shift", d.shiftId, branchId, d.date))) {
+      return { ok: false, errors: { shiftId: "Pick a shift from this branch with the same date" } };
     }
     const { totalPaisa, diffPaisa } = reconcileSales({
       cashPaisa: toPaisa(d.cashSales),

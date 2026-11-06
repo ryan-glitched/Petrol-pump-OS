@@ -136,7 +136,8 @@ export async function buildReport(
 
 /** Serialize a report to CSV, escaping quotes/commas/newlines per RFC 4180. */
 export function toCSV(result: ReportResult): string {
-  const escape = (cell: string) => {
+  const escape = (raw: string) => {
+    const cell = /^[=+\-@\t\r]/.test(raw) && !/^-?\d/.test(raw) ? `'${raw}` : raw;
     if (/[",\n]/.test(cell)) return `"${cell.replace(/"/g, '""')}"`;
     return cell;
   };

@@ -34,3 +34,12 @@ describe("duplicateMessage", () => {
     expect(duplicateMessage(undefined)).toBe("This entry has already been saved.");
   });
 });
+
+import { toCSV } from "@/lib/reports";
+
+describe("toCSV", () => {
+  it("neutralises spreadsheet formulas but keeps negative numbers", () => {
+    const csv = toCSV({ columns: ["a", "b"], rows: [["=HYPERLINK(1)", "-250"]] } as never);
+    expect(csv.split("\n")[1]).toBe("'=HYPERLINK(1),-250");
+  });
+});

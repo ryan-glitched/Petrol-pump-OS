@@ -31,14 +31,18 @@ export async function login(_prev: ActionState, formData: FormData): Promise<Act
   }
   const valid = await verifyPassword(parsed.data.password, user.passwordHash);
   if (!valid) {
-    const failedLogins = user.failedLogins + 1;
-    const locked = failedLogins >= MAX_FAILED_LOGINS;
-    await prisma.user.update({
+    const { failedLogins } = await prisma.user.update({
       where: { id: user.id },
-      data: locked
-        ? { failedLogins: 0, lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60_000) }
-        : { failedLogins },
+      data: { failedLogins: { increment: 1 } },
+      select: { failedLogins: true },
     });
+    const locked = failedLogins >= MAX_FAILED_LOGINS;
+    if (locked) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLogins: 0, lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60_000) },
+      });
+    }
     return { ok: false, message: locked ? LOCKED_MESSAGE : "Invalid email or password." };
   }
   if (user.failedLogins > 0 || user.lockedUntil) {
