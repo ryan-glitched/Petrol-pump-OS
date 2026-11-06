@@ -17,6 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Mobil Oil Sales", href: "/mobil-oil", icon: "Fuel", capability: "mobilOil" },
   { label: "Expenses", href: "/expenses", icon: "ReceiptText", capability: "expenses" },
   { label: "Credit Customers", href: "/credit-customers", icon: "CreditCard", capability: "credit" },
+  { label: "Corrections", href: "/corrections", icon: "Eraser", capability: "voidEntries" },
   { label: "Inventory", href: "/inventory", icon: "BarChart3" },
   { label: "Reports", href: "/reports", icon: "FileBarChart", capability: "viewReports" },
   { label: "Forecasting", href: "/forecasting", icon: "TrendingUp", capability: "viewReports" },

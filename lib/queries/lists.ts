@@ -26,7 +26,7 @@ export async function listShifts(branchId: string): Promise<Row[]> {
 export async function listNozzleReadings(branchId: string): Promise<Row[]> {
   const names = await staffNameMap(branchId);
   const rows = await prisma.nozzleReading.findMany({
-    where: { branchId },
+    where: { branchId, voidedAt: null },
     include: { nozzle: { include: { dispenser: true } }, product: true },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     take: PAGE,
@@ -45,7 +45,7 @@ export async function listNozzleReadings(branchId: string): Promise<Row[]> {
 }
 
 export async function listTankDips(branchId: string): Promise<Row[]> {
-  const rows = await prisma.tankDip.findMany({ where: { branchId }, include: { tank: true }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
+  const rows = await prisma.tankDip.findMany({ where: { branchId, voidedAt: null }, include: { tank: true }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
   return rows.map((d) => ({
     date: d.date,
     tank: d.tank.name,
@@ -57,7 +57,7 @@ export async function listTankDips(branchId: string): Promise<Row[]> {
 }
 
 export async function listDeliveries(branchId: string): Promise<Row[]> {
-  const rows = await prisma.delivery.findMany({ where: { branchId }, include: { product: true, tank: true }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
+  const rows = await prisma.delivery.findMany({ where: { branchId, voidedAt: null }, include: { product: true, tank: true }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
   return rows.map((d) => ({
     date: d.date,
     supplier: d.supplier,
@@ -71,7 +71,7 @@ export async function listDeliveries(branchId: string): Promise<Row[]> {
 }
 
 export async function listSales(branchId: string): Promise<Row[]> {
-  const rows = await prisma.salesEntry.findMany({ where: { branchId }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
+  const rows = await prisma.salesEntry.findMany({ where: { branchId, voidedAt: null }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
   return rows.map((s) => ({
     date: s.date,
     cash: formatPKR(asPaisa(s.cashPaisa)),
@@ -98,7 +98,7 @@ export async function listMobilOil(branchId: string): Promise<Row[]> {
 }
 
 export async function listExpenses(branchId: string): Promise<Row[]> {
-  const rows = await prisma.expense.findMany({ where: { branchId }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
+  const rows = await prisma.expense.findMany({ where: { branchId, voidedAt: null }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
   return rows.map((e) => ({
     date: e.date,
     category: e.category,

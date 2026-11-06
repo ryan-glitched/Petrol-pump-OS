@@ -324,7 +324,7 @@ async function main() {
         if (!fuelPrice) throw new Error(`Missing fuel price for ${nz.productId} on ${date}`);
         const amount = fuelPrice.ratePaisa * litres;
         const filler = fillers[Math.floor(rand() * fillers.length)];
-        await prisma.nozzleReading.create({
+        const reading = await prisma.nozzleReading.create({
           data: {
             branchId: main.id,
             shiftId: shift.id,
@@ -342,7 +342,7 @@ async function main() {
           },
         });
         soldByTank[nz.tankId] = (soldByTank[nz.tankId] ?? 0) + litres;
-        await prisma.stockMove.create({ data: { branchId: main.id, tankId: nz.tankId, type: "SALE", litres: -litres, refId: nz.id, at: new Date(`${date}T${shiftSlot === SHIFT_1 ? "18" : "23"}:00:00Z`) } });
+        await prisma.stockMove.create({ data: { branchId: main.id, tankId: nz.tankId, type: "SALE", litres: -litres, refId: reading.id, at: new Date(`${date}T${shiftSlot === SHIFT_1 ? "18" : "23"}:00:00Z`) } });
 
         // payment split for this nozzle's amount
         const cashShare = 0.55 + rand() * 0.1;
@@ -391,6 +391,8 @@ async function main() {
           closingDip,
           litres: Math.max(0, openingDip - closingDip),
           notes: anomaly ? "Recheck nozzle calibration" : undefined,
+          // Closing dip is taken after the day's last sales, so tank levels anchor on it correctly.
+          createdAt: new Date(`${date}T23:59:00Z`),
         },
       });
 

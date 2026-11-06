@@ -272,3 +272,19 @@ export const creditPaymentInput = z.object({
   reference: optionalText,
   notes: optionalText,
 });
+
+// ---- Corrections (void and re-enter) ---------------------------------------
+
+export const VOIDABLE_KINDS = ["reading", "dip", "delivery", "sales", "expense"] as const;
+export type VoidableKind = (typeof VOIDABLE_KINDS)[number];
+
+export const voidEntryInput = z.object({
+  entry: z
+    .string()
+    .regex(/^(reading|dip|delivery|sales|expense):[^:\s]+$/, "Choose the entry to void")
+    .transform((v) => {
+      const [kind, id] = v.split(":");
+      return { kind: kind as VoidableKind, id };
+    }),
+  reason: z.string().trim().min(5, "Write why this entry is wrong (at least 5 letters)"),
+});

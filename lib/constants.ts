@@ -41,6 +41,7 @@ export const CAPABILITIES = {
   mobilOil: ["SuperAdmin", "Owner", "Manager", "Cashier"],
   credit: ["SuperAdmin", "Owner", "Manager", "Cashier"],
   manageCredit: ["SuperAdmin", "Owner", "Manager"],
+  voidEntries: ["SuperAdmin", "Owner", "Manager"],
   allBranches: ["SuperAdmin", "Owner"],
 } as const satisfies Record<string, readonly Role[]>;
 
