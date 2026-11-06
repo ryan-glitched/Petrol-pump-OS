@@ -27,6 +27,12 @@ async function resolveFuelPrice(branchId: string, productId: string, date: strin
   });
 }
 
+function previousDay(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 async function recordBelongsToBranch(
   model: "shift" | "staff",
   id: string | undefined,
@@ -36,7 +42,11 @@ async function recordBelongsToBranch(
   if (!id) return true;
   const record =
     model === "shift"
-      ? await prisma.shift.findFirst({ where: { id, branchId, ...(date ? { date } : {}) }, select: { id: true } })
+      ? await prisma.shift.findFirst({
+          // Night shifts span midnight, so the shift may have started the previous day.
+          where: { id, branchId, ...(date ? { date: { in: [date, previousDay(date)] } } : {}) },
+          select: { id: true },
+        })
       : await prisma.staff.findFirst({ where: { id, branchId, active: true }, select: { id: true } });
   return Boolean(record);
 }
