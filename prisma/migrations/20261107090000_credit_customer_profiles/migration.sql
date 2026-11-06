@@ -45,14 +45,15 @@ JOIN (SELECT "branchId", lower("name") AS lname, min("id") AS keep_id FROM "Cred
   ON k."branchId" = c."branchId" AND k.lname = lower(c."name")
 WHERE c."id" <> k.keep_id;
 
--- Same plate already on the kept account: point sales at that vehicle and drop the duplicate.
-UPDATE "CreditSale" s SET "vehicleId" = keep_v."id"
+-- One surviving vehicle per (merged account, plate): point sales at it and drop the duplicates.
+CREATE TEMP TABLE vehicle_merge AS
+SELECT v."id" AS old_vid,
+       first_value(v."id") OVER (PARTITION BY g.keep_id, v."plate" ORDER BY (v."customerId" = g.keep_id) DESC, v."id") AS keep_vid
 FROM "CreditVehicle" v
-JOIN customer_merge m ON m.old_id = v."customerId"
-JOIN "CreditVehicle" keep_v ON keep_v."customerId" = m.keep_id AND keep_v."plate" = v."plate"
-WHERE s."vehicleId" = v."id";
-DELETE FROM "CreditVehicle" v USING customer_merge m, "CreditVehicle" keep_v
-WHERE m.old_id = v."customerId" AND keep_v."customerId" = m.keep_id AND keep_v."plate" = v."plate";
+JOIN (SELECT old_id AS cid, keep_id FROM customer_merge UNION SELECT keep_id, keep_id FROM customer_merge) g ON g.cid = v."customerId";
+UPDATE "CreditSale" s SET "vehicleId" = vm.keep_vid FROM vehicle_merge vm WHERE s."vehicleId" = vm.old_vid AND vm.old_vid <> vm.keep_vid;
+DELETE FROM "CreditVehicle" v USING vehicle_merge vm WHERE v."id" = vm.old_vid AND vm.old_vid <> vm.keep_vid;
+DROP TABLE vehicle_merge;
 
 UPDATE "CreditVehicle" v SET "customerId" = m.keep_id FROM customer_merge m WHERE v."customerId" = m.old_id;
 UPDATE "CreditSale" s SET "customerId" = m.keep_id FROM customer_merge m WHERE s."customerId" = m.old_id;
