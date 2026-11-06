@@ -37,7 +37,7 @@ function marginCells(r: MarginRow): string[] {
     r.litres.toLocaleString(undefined, { maximumFractionDigits: 2 }),
     formatPKR(asPaisa(r.salesPaisa)),
     formatPKR(asPaisa(r.marginPaisa)),
-    r.litres > 0 ? formatPKR(asPaisa(Math.round(r.marginPaisa / r.litres))) : "—",
+    r.litres > 0 ? `PKR ${(Math.round(r.marginPaisa / r.litres) / 100).toFixed(2)}` : "—",
   ];
 }
 
@@ -49,8 +49,12 @@ async function marginReport(branchId: string, by: MarginGroup, date: { gte?: str
   const { rows, total } = groupMargin(
     readings.map((r) => ({
       date: r.date,
+      shiftId: r.shiftId,
+      shiftDate: r.shift?.date ?? null,
       shift: r.shift?.shiftSlot ?? null,
+      dispenserId: r.nozzle.dispenserId,
       dispenser: r.nozzle.dispenser.label,
+      nozzleId: r.nozzleId,
       nozzle: r.nozzle.label,
       fuel: r.product.name,
       litres: r.litres,
