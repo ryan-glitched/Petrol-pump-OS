@@ -363,20 +363,43 @@ model Expense {
 }
 
 model CreditCustomer {
-  id        String          @id @default(cuid())
-  branchId  String
-  name      String
-  vehicle   String
-  phone     String?
-  active    Boolean         @default(true)
-  branch    Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  sales     CreditSale[]
-  payments  CreditPayment[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id                  String          @id @default(cuid())
+  branchId            String
+  name                String
+  company             String?
+  phone               String?
+  cnic                String?
+  ntn                 String?
+  address             String?
+  creditLimitPaisa    Int?
+  openingBalancePaisa Int             @default(0)
+  openingPaidPaisa    Int             @default(0)
+  openingDate         String?
+  billingCycle        String          @default("MONTHLY") // FIFTEEN_DAYS | MONTHLY | CUSTOM
+  billingDays         Int             @default(30)
+  notes               String?
+  active              Boolean         @default(true)
+  branch              Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  vehicles            CreditVehicle[]
+  sales               CreditSale[]
+  payments            CreditPayment[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
-  @@unique([branchId, name, vehicle])
   @@index([branchId, active])
+  @@index([branchId, name])
+}
+
+model CreditVehicle {
+  id         String         @id @default(cuid())
+  customerId String
+  plate      String
+  active     Boolean        @default(true)
+  customer   CreditCustomer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  sales      CreditSale[]
+  createdAt  DateTime       @default(now())
+
+  @@unique([customerId, plate])
 }
 
 model CreditSale {
@@ -384,6 +407,7 @@ model CreditSale {
   branchId    String
   shiftId     String?
   customerId  String
+  vehicleId   String?
   productId   String
   date        String
   litres      Float
@@ -394,6 +418,7 @@ model CreditSale {
   branch      Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
   shift       Shift?          @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   customer    CreditCustomer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  vehicle     CreditVehicle?  @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
   product     Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
   payments    CreditPayment[]
   createdAt   DateTime        @default(now())
@@ -401,6 +426,7 @@ model CreditSale {
 
   @@index([branchId, date])
   @@index([customerId, status, dueDate])
+  @@index([vehicleId])
 }
 
 model CreditPayment {

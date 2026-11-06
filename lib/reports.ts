@@ -75,13 +75,13 @@ export async function buildReport(
       };
     }
     case "credit": {
-      const rows = await prisma.creditSale.findMany({ where: { branchId, ...(date ? { dueDate: date } : {}) }, include: { customer: true, product: true }, orderBy: { createdAt: "desc" } });
+      const rows = await prisma.creditSale.findMany({ where: { branchId, ...(date ? { dueDate: date } : {}) }, include: { customer: true, vehicle: true, product: true }, orderBy: { createdAt: "desc" } });
       return {
         title: "Credit ledger report",
         columns: ["Customer", "Vehicle", "Product", "Litres", "Amount", "Paid", "Status", "Due date"],
         rows: rows.map((r) => [
           r.customer.name,
-          r.customer.vehicle,
+          r.vehicle?.plate ?? "",
           r.product.name,
           r.litres.toLocaleString(),
           formatPKR(asPaisa(r.amountPaisa)),
