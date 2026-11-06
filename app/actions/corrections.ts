@@ -40,12 +40,14 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
 
     const result = await prisma.$transaction(async (tx) => {
       let tankDay: { tankId: string; date: string } | null = null;
+      let reverseL = 0;
       let before: unknown;
       if (kind === "reading") {
         const row = await tx.nozzleReading.findFirst({ where, include: { nozzle: { select: { tankId: true } } } });
         if (!row || (await tx.nozzleReading.updateMany({ where, data: stamp })).count === 0) return null;
         before = row;
         tankDay = { tankId: row.nozzle.tankId, date: row.date };
+        reverseL = row.litres;
       } else if (kind === "dip") {
         const row = await tx.tankDip.findFirst({ where });
         if (!row || (await tx.tankDip.updateMany({ where, data: stamp })).count === 0) return null;
@@ -56,6 +58,7 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
         if (!row || (await tx.delivery.updateMany({ where, data: stamp })).count === 0) return null;
         before = row;
         tankDay = { tankId: row.tankId, date: row.date };
+        reverseL = -row.quantityL;
       } else if (kind === "sales") {
         const row = await tx.salesEntry.findFirst({ where });
         if (!row || (await tx.salesEntry.updateMany({ where, data: stamp })).count === 0) return null;
@@ -66,14 +69,13 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
         before = row;
       }
 
-      if (kind === "reading" || kind === "delivery") {
-        // Reverse the stock move at the original time, so tank levels before and after later dips stay right.
-        const moves = await tx.stockMove.findMany({ where: { refId: id, type: { in: ["SALE", "DELIVERY"] } } });
-        for (const m of moves) {
-          await tx.stockMove.create({
-            data: { branchId, tankId: m.tankId, type: "VOID", litres: -m.litres, refId: id, reason, at: m.at },
-          });
-        }
+      if (tankDay && reverseL !== 0) {
+        // Reverse the entry's own litres (not whatever move happens to reference it), dated at the original
+        // move so tank levels before and after later dips stay right.
+        const original = await tx.stockMove.findFirst({ where: { refId: id, type: { in: ["SALE", "DELIVERY"] } } });
+        await tx.stockMove.create({
+          data: { branchId, tankId: tankDay.tankId, type: "VOID", litres: reverseL, refId: id, reason, at: original?.at ?? new Date() },
+        });
       }
       return { tankDay, before };
     });
