@@ -9,6 +9,8 @@ import { type ActionState, idleState } from "@/lib/actions/helpers";
 
 type PreviewMode = "nozzle" | "sales" | "mobilOil" | "delivery";
 
+type FormState = ActionState & { values?: Record<string, string>; attempt: number };
+
 function toNumber(value: string | undefined) {
   return Number(value || 0);
 }
@@ -30,7 +32,23 @@ export function DataEntryForm({
   submitLabel?: string;
   hiddenValues?: Record<string, string>;
 }) {
-  const [state, formAction, pending] = useActionState(action, idleState);
+  const secret = new Set(fields.filter((f) => f.type === "password").map((f) => f.name));
+  // React clears the form after each submit; keep what was typed when the save fails.
+  const [state, formAction, pending] = useActionState<FormState, FormData>(
+    async (prev, formData) => {
+      const result = await action(prev, formData);
+      const values = result.ok
+        ? undefined
+        : Object.fromEntries(
+            [...formData.entries()].filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string" && !secret.has(entry[0]),
+            ),
+          );
+      return { ...result, values, attempt: prev.attempt + 1 };
+    },
+    { ...idleState, attempt: 0 },
+  );
+  const initial = (field: FieldDef) => state.values?.[field.name] ?? field.defaultValue;
   const [values, setValues] = useState<Record<string, string>>({});
 
   function update(name: string, value: string) {
@@ -38,24 +56,25 @@ export function DataEntryForm({
   }
 
   const computed = (() => {
+    const v = { ...state.values, ...values };
     if (mode === "nozzle") {
-      const litres = Math.max(0, toNumber(values.closingReading) - toNumber(values.openingReading));
+      const litres = Math.max(0, toNumber(v.closingReading) - toNumber(v.openingReading));
       return [{ label: "Litres sold", value: `${formatNumber(litres)} L` }];
     }
     if (mode === "sales") {
-      const total = toNumber(values.cashSales) + toNumber(values.cardSales) + toNumber(values.creditSales);
-      const difference = toNumber(values.cashInHand) - toNumber(values.cashSales);
+      const total = toNumber(v.cashSales) + toNumber(v.cardSales) + toNumber(v.creditSales);
+      const difference = toNumber(v.cashInHand) - toNumber(v.cashSales);
       return [
         { label: "Total sales", value: formatCurrency(total) },
         { label: "Cash difference", value: formatCurrency(difference) },
       ];
     }
     if (mode === "mobilOil") {
-      const profit = (toNumber(values.sellingPrice) - toNumber(values.purchasePrice)) * toNumber(values.quantity);
+      const profit = (toNumber(v.sellingPrice) - toNumber(v.purchasePrice)) * toNumber(v.quantity);
       return [{ label: "Profit", value: formatCurrency(profit) }];
     }
     if (mode === "delivery") {
-      const cost = toNumber(values.quantity) * toNumber(values.purchaseRate);
+      const cost = toNumber(v.quantity) * toNumber(v.purchaseRate);
       return [{ label: "Total cost", value: formatCurrency(cost) }];
     }
     return [];
@@ -70,7 +89,7 @@ export function DataEntryForm({
         <h2 className="text-xl font-black text-slate-950">{title}</h2>
         <p className="mt-1 text-sm text-slate-500">{description}</p>
       </div>
-      <form action={formAction} onSubmit={() => setValues({})} className="grid gap-4 md:grid-cols-2">
+      <form key={state.attempt} action={formAction} onSubmit={() => setValues({})} className="grid gap-4 md:grid-cols-2">
         {hiddenValues
           ? Object.entries(hiddenValues).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)
           : null}
@@ -84,7 +103,7 @@ export function DataEntryForm({
               {field.type === "select" ? (
                 <select
                   name={field.name}
-                  defaultValue={field.defaultValue ?? ""}
+                  defaultValue={initial(field) ?? ""}
                   required={field.required}
                   className={common}
                   onChange={(e) => update(field.name, e.target.value)}
@@ -102,7 +121,7 @@ export function DataEntryForm({
                   className={`${common} min-h-28 resize-none`}
                   placeholder={field.placeholder}
                   required={field.required}
-                  defaultValue={field.defaultValue}
+                  defaultValue={initial(field)}
                   onChange={(e) => update(field.name, e.target.value)}
                 />
               ) : (
@@ -114,7 +133,7 @@ export function DataEntryForm({
                   step={field.step}
                   required={field.required}
                   readOnly={field.readOnly}
-                  defaultValue={field.defaultValue}
+                  defaultValue={initial(field)}
                   onChange={(e) => update(field.name, e.target.value)}
                 />
               )}

@@ -30,7 +30,7 @@ export default async function SettingsPage() {
         description="Station profile, fuel pricing, variance tolerance, and the role permission matrix."
       />
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-2 [&>*]:min-w-0">
         <Card>
           <h2 className="text-xl font-black">Station setup</h2>
           <div className="mt-5 grid gap-4">

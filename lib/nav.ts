@@ -22,5 +22,5 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Forecasting", href: "/forecasting", icon: "TrendingUp", capability: "viewReports" },
   { label: "Staff Management", href: "/staff", icon: "Users", capability: "manageStaff" },
   { label: "Branches / Stations", href: "/branches", icon: "Building2", capability: "manageBranches" },
-  { label: "Settings", href: "/settings", icon: "Settings", capability: "settings" },
+  { label: "Settings", href: "/settings", icon: "Settings" },
 ];

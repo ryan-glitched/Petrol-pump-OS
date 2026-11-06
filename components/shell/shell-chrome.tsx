@@ -124,6 +124,15 @@ export function ShellChrome({ navItems, branches, activeBranchId, user, children
                   ))}
                 </select>
               </form>
+              <form action={logout} className="xl:hidden">
+                <button
+                  type="submit"
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </button>
+              </form>
             </div>
           </div>
           <div className="mt-4 flex gap-2 overflow-x-auto pb-1 xl:hidden">
