@@ -42,6 +42,7 @@ export const CAPABILITIES = {
   credit: ["SuperAdmin", "Owner", "Manager", "Cashier"],
   manageCredit: ["SuperAdmin", "Owner", "Manager"],
   voidEntries: ["SuperAdmin", "Owner", "Manager"],
+  approveShifts: ["SuperAdmin", "Owner"],
   allBranches: ["SuperAdmin", "Owner"],
 } as const satisfies Record<string, readonly Role[]>;
 

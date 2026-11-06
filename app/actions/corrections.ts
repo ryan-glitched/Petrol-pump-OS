@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireCapability, scopedBranchId } from "@/lib/auth/guard";
 import { writeAudit } from "@/lib/audit";
-import { type ActionState, parseForm, toActionError } from "@/lib/actions/helpers";
+import { type ActionState, ShiftClosedError, assertShiftOpen, parseForm, toActionError } from "@/lib/actions/helpers";
 import { recomputeVariance } from "@/lib/queries/variance";
 import { voidEntryInput, type VoidableKind } from "@/lib/validation/schemas";
 
@@ -25,6 +25,8 @@ const PAGES: Record<VoidableKind, string> = {
 };
 
 const ALREADY = "This entry was already voided. Reload the page.";
+const SHIFT_LOCKED = "This entry belongs to a closed or approved shift. The Owner must reopen the shift first.";
+
 
 /** Marks an entry void (never deletes it), reverses its stock effect and re-runs the loss check for that tank/day. */
 export async function voidEntry(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -46,6 +48,7 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
       if (kind === "reading") {
         const row = await tx.nozzleReading.findFirst({ where, include: { nozzle: { select: { tankId: true } } } });
         if (!row || (await tx.nozzleReading.updateMany({ where, data: stamp })).count === 0) return null;
+        await assertShiftOpen(tx, row.shiftId, { branchId, date: row.date });
         before = row;
         tankDay = { tankId: row.nozzle.tankId, date: row.date };
         reverseL = row.litres;
@@ -53,11 +56,13 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
       } else if (kind === "dip") {
         const row = await tx.tankDip.findFirst({ where });
         if (!row || (await tx.tankDip.updateMany({ where, data: stamp })).count === 0) return null;
+        await assertShiftOpen(tx, row.shiftId, { branchId, date: row.date });
         before = row;
         tankDay = { tankId: row.tankId, date: row.date };
       } else if (kind === "delivery") {
         const row = await tx.delivery.findFirst({ where });
         if (!row || (await tx.delivery.updateMany({ where, data: stamp })).count === 0) return null;
+        await assertShiftOpen(tx, null, { branchId, date: row.date });
         before = row;
         tankDay = { tankId: row.tankId, date: row.date };
         reverseL = -row.quantityL;
@@ -65,10 +70,12 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
       } else if (kind === "sales") {
         const row = await tx.salesEntry.findFirst({ where });
         if (!row || (await tx.salesEntry.updateMany({ where, data: stamp })).count === 0) return null;
+        await assertShiftOpen(tx, row.shiftId, { branchId, date: row.date });
         before = row;
       } else {
         const row = await tx.expense.findFirst({ where });
         if (!row || (await tx.expense.updateMany({ where, data: stamp })).count === 0) return null;
+        await assertShiftOpen(tx, null, { branchId, date: row.date });
         before = row;
       }
 
@@ -92,6 +99,7 @@ export async function voidEntry(_prev: ActionState, formData: FormData): Promise
     revalidatePath("/");
     return { ok: true, message: "Entry voided. It no longer counts anywhere. Re-enter the correct figures on its normal page." };
   } catch (err) {
+    if (err instanceof ShiftClosedError) return { ok: false, errors: { entry: SHIFT_LOCKED } };
     return toActionError(err);
   }
 }

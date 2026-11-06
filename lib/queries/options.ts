@@ -29,7 +29,7 @@ export async function staffOptions(branchId: string): Promise<Option[]> {
 }
 
 export async function shiftOptions(branchId: string): Promise<Option[]> {
-  const shifts = await prisma.shift.findMany({ where: { branchId }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 20 });
+  const shifts = await prisma.shift.findMany({ where: { branchId, status: "OPEN" }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 20 });
   return shifts.map((s) => ({ value: s.id, label: `${s.date} · ${s.shiftSlot}` }));
 }
 

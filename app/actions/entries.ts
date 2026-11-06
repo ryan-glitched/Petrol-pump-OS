@@ -4,11 +4,12 @@ import { SHIFT_SLOTS } from "@/lib/constants";
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireCapability, scopedBranchId } from "@/lib/auth/guard";
+import { can, requireCapability, scopedBranchId } from "@/lib/auth/guard";
 import { writeAudit } from "@/lib/audit";
-import { type ActionState, parseForm, toActionError } from "@/lib/actions/helpers";
+import { type ActionState, assertShiftOpen, parseForm, toActionError } from "@/lib/actions/helpers";
 import { asPaisa, toPaisa } from "@/lib/money";
 import { dipLitres, nozzleAmountPaisa, nozzleLitres } from "@/lib/domain/readings";
+import { meterMatches } from "@/lib/domain/shifts";
 import { mobilProfitPaisa, reconcileSales } from "@/lib/domain/sales";
 import { recomputeVariance } from "@/lib/queries/variance";
 import {
@@ -48,6 +49,7 @@ async function recordBelongsToBranch(
           where: {
             id,
             branchId,
+            status: "OPEN",
             ...(date ? { OR: [{ date }, { date: previousDay(date), shiftSlot: SHIFT_SLOTS[1] }] } : {}),
           },
           select: { id: true },
@@ -101,8 +103,33 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
 
     const nozzle = await prisma.nozzle.findFirst({ where: { id: d.nozzleId, branchId } });
     if (!nozzle) return { ok: false, errors: { nozzleId: "Unknown nozzle for this branch" } };
+    const previous = await prisma.nozzleReading.findFirst({
+      where: { nozzleId: nozzle.id, voidedAt: null, date: { lte: d.date } },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    });
+    const meterChange = d.meterChangeReason && d.meterChangeReason.length >= 5 && can(session.role, "voidEntries");
+    const next = await prisma.nozzleReading.findFirst({
+      where: { nozzleId: nozzle.id, voidedAt: null, date: { gt: d.date } },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+    if (next && !meterMatches(d.closingReading, next.opening) && !meterChange) {
+      return {
+        ok: false,
+        errors: {
+          closingReading: `Should be ${next.opening}, the opening reading already saved for ${next.date}. If the meter was reset or replaced, a Manager or Owner can save it with a reason.`,
+        },
+      };
+    }
+    if (previous && !meterMatches(previous.closing, d.openingReading) && !meterChange) {
+      return {
+        ok: false,
+        errors: {
+          openingReading: `Should be ${previous.closing}, the last closing reading (${previous.date}). If the meter was reset or replaced, a Manager or Owner can save it with a reason.`,
+        },
+      };
+    }
     if (!(await recordBelongsToBranch("shift", d.shiftId, branchId, d.date))) {
-      return { ok: false, errors: { shiftId: "Pick a shift from this branch with the same date" } };
+      return { ok: false, errors: { shiftId: "Pick an open shift from this branch with the same date" } };
     }
     if (!(await recordBelongsToBranch("staff", d.staffId, branchId))) {
       return { ok: false, errors: { staffId: "Staff member is not active at this branch" } };
@@ -120,6 +147,7 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
       const [locked] = await tx.$queryRaw<{ tankId: string; active: boolean }[]>`
         SELECT "tankId", "active" FROM "Nozzle" WHERE "id" = ${nozzle.id} FOR SHARE`;
       if (!locked?.active || locked.tankId !== nozzle.tankId) return null;
+      await assertShiftOpen(tx, d.shiftId, { branchId, date: d.date });
       const reading = await tx.nozzleReading.create({
         data: {
           branchId,
@@ -149,7 +177,14 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
     }
 
     await recomputeVariance(branchId, nozzle.tankId, d.date);
-    await writeAudit({ session, action: "create", entity: "NozzleReading", entityId: row.id, branchId, after: row });
+    await writeAudit({
+      session,
+      action: "create",
+      entity: "NozzleReading",
+      entityId: row.id,
+      branchId,
+      after: meterChange && previous ? { ...row, meterChange: { reason: d.meterChangeReason, previousClosing: previous.closing } } : row,
+    });
     revalidatePath("/nozzle-readings");
     revalidatePath("/inventory");
     revalidatePath("/");
@@ -169,20 +204,23 @@ export async function createTankDip(_prev: ActionState, formData: FormData): Pro
     const tank = await prisma.tank.findFirst({ where: { id: d.tankId, branchId } });
     if (!tank) return { ok: false, errors: { tankId: "Unknown tank for this branch" } };
     if (!(await recordBelongsToBranch("shift", d.shiftId, branchId, d.date))) {
-      return { ok: false, errors: { shiftId: "Pick a shift from this branch with the same date" } };
+      return { ok: false, errors: { shiftId: "Pick an open shift from this branch with the same date" } };
     }
 
-    const row = await prisma.tankDip.create({
-      data: {
-        branchId,
-        shiftId: d.shiftId || null,
-        tankId: tank.id,
-        date: d.date,
-        openingDip: d.openingDip,
-        closingDip: d.closingDip,
-        litres: dipLitres(d.openingDip, d.closingDip),
-        notes: d.notes || null,
-      },
+    const row = await prisma.$transaction(async (tx) => {
+      await assertShiftOpen(tx, d.shiftId, { branchId, date: d.date });
+      return tx.tankDip.create({
+        data: {
+          branchId,
+          shiftId: d.shiftId || null,
+          tankId: tank.id,
+          date: d.date,
+          openingDip: d.openingDip,
+          closingDip: d.closingDip,
+          litres: dipLitres(d.openingDip, d.closingDip),
+          notes: d.notes || null,
+        },
+      });
     });
     await recomputeVariance(branchId, tank.id, d.date);
     await writeAudit({ session, action: "create", entity: "TankDip", entityId: row.id, branchId, after: row });
@@ -212,6 +250,7 @@ export async function createDelivery(_prev: ActionState, formData: FormData): Pr
     const costPaisa = Math.round(ratePaisa * d.quantity);
 
     const row = await prisma.$transaction(async (tx) => {
+      await assertShiftOpen(tx, null, { branchId, date: d.date });
       const delivery = await tx.delivery.create({
         data: {
           branchId,
@@ -252,7 +291,7 @@ export async function createSalesEntry(_prev: ActionState, formData: FormData): 
     if (!parsed.success) return { ok: false, errors: parsed.errors };
     const d = parsed.data;
     if (!(await recordBelongsToBranch("shift", d.shiftId, branchId, d.date))) {
-      return { ok: false, errors: { shiftId: "Pick a shift from this branch with the same date" } };
+      return { ok: false, errors: { shiftId: "Pick an open shift from this branch with the same date" } };
     }
     const { totalPaisa, diffPaisa } = reconcileSales({
       cashPaisa: toPaisa(d.cashSales),
@@ -260,18 +299,21 @@ export async function createSalesEntry(_prev: ActionState, formData: FormData): 
       creditPaisa: toPaisa(d.creditSales),
       cashInHandPaisa: toPaisa(d.cashInHand),
     });
-    const row = await prisma.salesEntry.create({
-      data: {
-        branchId,
-        shiftId: d.shiftId || null,
-        date: d.date,
-        cashPaisa: toPaisa(d.cashSales),
-        cardPaisa: toPaisa(d.cardSales),
-        creditPaisa: toPaisa(d.creditSales),
-        totalPaisa,
-        cashInHandPaisa: toPaisa(d.cashInHand),
-        diffPaisa,
-      },
+    const row = await prisma.$transaction(async (tx) => {
+      await assertShiftOpen(tx, d.shiftId, { branchId, date: d.date });
+      return tx.salesEntry.create({
+        data: {
+          branchId,
+          shiftId: d.shiftId || null,
+          date: d.date,
+          cashPaisa: toPaisa(d.cashSales),
+          cardPaisa: toPaisa(d.cardSales),
+          creditPaisa: toPaisa(d.creditSales),
+          totalPaisa,
+          cashInHandPaisa: toPaisa(d.cashInHand),
+          diffPaisa,
+        },
+      });
     });
     await writeAudit({ session, action: "create", entity: "SalesEntry", entityId: row.id, branchId, after: row });
     revalidatePath("/sales");

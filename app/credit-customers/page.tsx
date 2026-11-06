@@ -1,3 +1,4 @@
+import { shiftOptions } from "@/lib/queries/options";
 import { AppShell } from "@/components/shell/app-shell";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { DataEntryForm } from "@/components/forms/data-entry-form";
@@ -35,6 +36,7 @@ const billingLabel = (cycle: string, days: number) =>
 
 export default async function CreditCustomersPage({ searchParams }: { searchParams: Promise<{ customer?: string }> }) {
   const ctx = await requireViewContext();
+  const shifts = await shiftOptions(ctx.branchId);
   const branchId = ctx.branchId;
   const today = todayISO();
   const selectedId = (await searchParams).customer;
@@ -150,6 +152,7 @@ export default async function CreditCustomersPage({ searchParams }: { searchPara
             submitLabel="Save credit sale"
             fields={[
               { name: "date", label: "Sale date", type: "date", required: true, defaultValue: today },
+              { name: "shiftId", label: "Shift", type: "select", options: shifts },
               { name: "customerId", label: "Customer", type: "select", required: true, options: customerOptions },
               { name: "vehicleId", label: "Vehicle", type: "select", options: vehicleOptions },
               { name: "productId", label: "Fuel", type: "select", required: true, options: fuels },

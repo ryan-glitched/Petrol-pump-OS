@@ -50,8 +50,34 @@ export function duplicateMessage(target: unknown): string {
   return match?.message ?? "This entry has already been saved.";
 }
 
+/** Thrown inside an entry transaction when its shift was closed meanwhile. */
+export class ShiftClosedError extends Error {}
+
+/**
+ * Holds a shared lock on the entry's shift for the rest of the transaction, so it can't be closed mid-save.
+ * Entries without a shift are refused once any shift on that day is closed or approved.
+ */
+export async function assertShiftOpen(
+  tx: Prisma.TransactionClient,
+  shiftId: string | null | undefined,
+  day: { branchId: string; date: string },
+): Promise<void> {
+  if (shiftId) {
+    const [shift] = await tx.$queryRaw<{ status: string }[]>`SELECT "status" FROM "Shift" WHERE "id" = ${shiftId} FOR SHARE`;
+    if (shift && shift.status !== "OPEN") throw new ShiftClosedError();
+    return;
+  }
+  // Lock every shift of the day (open ones too), so a close waits for this entry to commit.
+  const shifts = await tx.$queryRaw<{ status: string }[]>`
+    SELECT "status" FROM "Shift" WHERE "branchId" = ${day.branchId} AND "date" = ${day.date} FOR SHARE`;
+  if (shifts.some((s) => s.status !== "OPEN")) throw new ShiftClosedError();
+}
+
 /** Map auth/forbidden/duplicate errors to friendly form messages; rethrow the rest. */
 export function toActionError(err: unknown): ActionState {
+  if (err instanceof ShiftClosedError) {
+    return { ok: false, errors: { shiftId: "That shift (or a shift on that day) has been closed. Pick an open shift, or ask the Owner to reopen it." } };
+  }
   if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
     return { ok: false, message: duplicateMessage(err.meta?.target) };
   }
