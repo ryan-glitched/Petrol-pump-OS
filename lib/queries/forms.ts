@@ -48,6 +48,12 @@ export async function nozzleFields(branchId: string): Promise<FieldDef[]> {
     { name: "openingReading", label: "Opening reading", type: "number", required: true, step: "0.01" },
     { name: "closingReading", label: "Closing reading", type: "number", required: true, step: "0.01" },
     { name: "staffId", label: "Filler", type: "select", options: staff },
+    {
+      name: "meterChangeReason",
+      label: "Meter reset or replaced? Reason (Manager/Owner only)",
+      type: "text",
+      placeholder: "Leave empty unless the meter changed",
+    },
   ];
 }
 

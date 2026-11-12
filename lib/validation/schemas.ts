@@ -42,6 +42,7 @@ export const nozzleReadingInput = z
     openingReading: z.coerce.number().min(0),
     closingReading: z.coerce.number().min(0),
     staffId: z.string().optional(),
+    meterChangeReason: z.string().trim().optional(),
   })
   .refine((v) => v.closingReading >= v.openingReading, {
     path: ["closingReading"],
@@ -257,6 +258,7 @@ export const creditVehicleInput = z.object({
 
 export const creditSaleInput = z.object({
   date: isoDate,
+  shiftId: z.string().optional(),
   customerId: id,
   vehicleId: z.string().optional(),
   productId: id,
@@ -287,4 +289,11 @@ export const voidEntryInput = z.object({
       return { kind: kind as VoidableKind, id };
     }),
   reason: z.string().trim().min(5, "Write why this entry is wrong (at least 5 letters)"),
+});
+
+// ---- Shift close / approve -------------------------------------------------
+
+export const shiftStatusInput = z.object({
+  shiftId: id,
+  change: z.enum(["close", "approve", "reopen"], { message: "Choose what to do with the shift" }),
 });
