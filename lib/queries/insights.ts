@@ -13,7 +13,7 @@ export async function getInsights(branchId: string): Promise<Insight[]> {
     getTankLevels(branchId),
     prisma.varianceLog.findMany({ where: { branchId, flagged: true }, include: { tank: true }, orderBy: { date: "desc" }, take: 5 }),
     prisma.creditSale.findMany({ where: { branchId, status: { not: "Paid" } }, include: { customer: true } }),
-    prisma.salesEntry.findMany({ where: { branchId } }),
+    prisma.salesEntry.findMany({ where: { branchId, voidedAt: null } }),
   ]);
 
   const insights: Insight[] = [];

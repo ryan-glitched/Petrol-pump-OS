@@ -219,7 +219,7 @@ model Shift {
   assignments      ShiftAssignment[]
   readings         NozzleReading[]
   dips             TankDip[]
-  sales            SalesEntry?
+  sales            SalesEntry[]
   creditSales      CreditSale[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -261,9 +261,12 @@ model NozzleReading {
   fuelPrice             FuelPrice @relation(fields: [fuelPriceId], references: [id], onDelete: Restrict)
   staff                 Staff?    @relation(fields: [staffId], references: [id], onDelete: SetNull)
   shift                 Shift?    @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  voidedAt              DateTime?
+  voidedById            String?
+  voidReason            String?
   createdAt             DateTime  @default(now())
 
-  @@unique([shiftId, nozzleId])
+  @@index([shiftId])
   @@index([branchId, date])
   @@index([nozzleId, date])
   @@index([fuelPriceId])
@@ -282,9 +285,12 @@ model TankDip {
   branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   tank       Tank     @relation(fields: [tankId], references: [id], onDelete: Restrict)
   shift      Shift?   @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  voidedAt              DateTime?
+  voidedById            String?
+  voidReason            String?
   createdAt  DateTime @default(now())
 
-  @@unique([shiftId, tankId])
+  @@index([shiftId])
   @@index([branchId, tankId, date])
 }
 
@@ -304,9 +310,12 @@ model Delivery {
   branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   product   Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   tank      Tank     @relation(fields: [tankId], references: [id], onDelete: Restrict)
+  voidedAt              DateTime?
+  voidedById            String?
+  voidReason            String?
   createdAt DateTime @default(now())
 
-  @@unique([branchId, invoice])
+  @@index([branchId, invoice])
   @@index([branchId, date])
   @@index([tankId, date])
 }
@@ -314,7 +323,7 @@ model Delivery {
 model SalesEntry {
   id              String   @id @default(cuid())
   branchId        String
-  shiftId         String?  @unique
+  shiftId         String?
   date            String
   cashPaisa       Int
   cardPaisa       Int
@@ -324,9 +333,13 @@ model SalesEntry {
   diffPaisa       Int
   branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
   shift           Shift?   @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  voidedAt              DateTime?
+  voidedById            String?
+  voidReason            String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  @@index([shiftId])
   @@index([branchId, date])
 }
 
@@ -357,6 +370,9 @@ model Expense {
   description String
   receiptUrl  String?
   branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  voidedAt              DateTime?
+  voidedById            String?
+  voidReason            String?
   createdAt   DateTime @default(now())
 
   @@index([branchId, date, category])

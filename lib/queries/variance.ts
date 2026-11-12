@@ -4,36 +4,40 @@ import { bookVsDipVariance } from "@/lib/domain/variance";
 /**
  * Rebuild the VarianceLog row for one tank/day from the ledger:
  * opening/closing dips, deliveries, and nozzle sales for that date.
- * No-ops when the day has no dip yet (variance needs a physical reading).
+ * Clears the row when the day has no live dip (variance needs a physical reading).
+ * Runs under a per-tank/day lock so concurrent edits can't leave an older snapshot written last.
  */
 export async function recomputeVariance(branchId: string, tankId: string, date: string): Promise<void> {
-  const dips = await prisma.tankDip.findMany({
-    where: { branchId, tankId, date },
-    orderBy: { createdAt: "asc" },
-  });
-  if (dips.length === 0) return;
-  const openingDipL = dips[0].openingDip;
-  const closingDipL = dips[dips.length - 1].closingDip;
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`variance:${tankId}:${date}`}))`;
 
-  const [branch, deliveries, readings] = await Promise.all([
-    prisma.branch.findUnique({ where: { id: branchId } }),
-    prisma.delivery.aggregate({ where: { branchId, tankId, date }, _sum: { quantityL: true } }),
-    prisma.nozzleReading.findMany({ where: { branchId, date, nozzle: { tankId } }, select: { litres: true } }),
-  ]);
-  const deliveriesL = deliveries._sum.quantityL ?? 0;
-  const soldL = readings.reduce((sum, r) => sum + r.litres, 0);
+    const dips = await tx.tankDip.findMany({
+      where: { branchId, tankId, date, voidedAt: null },
+      orderBy: { createdAt: "asc" },
+    });
+    await tx.varianceLog.deleteMany({ where: { branchId, tankId, date } });
+    if (dips.length === 0) return;
+    const openingDipL = dips[0].openingDip;
+    const closingDipL = dips[dips.length - 1].closingDip;
 
-  const v = bookVsDipVariance({
-    openingDipL,
-    deliveriesL,
-    soldL,
-    closingDipL,
-    tolerancePct: branch?.varianceTolerancePct,
-  });
+    const branch = await tx.branch.findUnique({ where: { id: branchId } });
+    const deliveries = await tx.delivery.aggregate({ where: { branchId, tankId, date, voidedAt: null }, _sum: { quantityL: true } });
+    const readings = await tx.nozzleReading.findMany({
+      where: { branchId, date, voidedAt: null, nozzle: { tankId } },
+      select: { litres: true },
+    });
+    const deliveriesL = deliveries._sum.quantityL ?? 0;
+    const soldL = readings.reduce((sum, r) => sum + r.litres, 0);
 
-  await prisma.$transaction([
-    prisma.varianceLog.deleteMany({ where: { branchId, tankId, date } }),
-    prisma.varianceLog.create({
+    const v = bookVsDipVariance({
+      openingDipL,
+      deliveriesL,
+      soldL,
+      closingDipL,
+      tolerancePct: branch?.varianceTolerancePct,
+    });
+
+    await tx.varianceLog.create({
       data: {
         branchId,
         tankId,
@@ -44,6 +48,6 @@ export async function recomputeVariance(branchId: string, tankId: string, date: 
         variancePct: v.variancePct,
         flagged: v.flagged,
       },
-    }),
-  ]);
+    });
+  });
 }
