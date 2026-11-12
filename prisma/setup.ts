@@ -144,7 +144,7 @@ async function main() {
           branches: { create: [{ branchId: branch.id }] },
         },
       });
-    });
+    }, { timeout: 60_000 });
 
     console.log(`Setup complete for "${config.station.name}".`);
     console.log(`Owner login: ${email}`);
