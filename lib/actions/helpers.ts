@@ -38,6 +38,9 @@ const DUPLICATE_MESSAGES: { fields: string[]; message: string }[] = [
   { fields: ["nozzleId"], message: "A reading for this nozzle is already saved for this shift/day." },
   { fields: ["tankId"], message: "A dip for this tank is already saved for this shift/day." },
   { fields: ["employeeCode"], message: "This employee code is already in use." },
+  { fields: ["email"], message: "A login with this email already exists." },
+  { fields: ["label"], message: "That name is already used here. Pick a different one." },
+  { fields: ["name"], message: "That name is already used. Pick a different one." },
 ];
 
 /** Turn a unique-constraint violation into a message the user can act on. */

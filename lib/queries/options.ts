@@ -5,7 +5,7 @@ export type Option = { value: string; label: string };
 
 export async function nozzleOptions(branchId: string): Promise<Option[]> {
   const nozzles = await prisma.nozzle.findMany({
-    where: { branchId },
+    where: { branchId, active: true, dispenser: { active: true }, tank: { active: true } },
     include: { dispenser: true, product: true },
     orderBy: { label: "asc" },
   });
@@ -13,7 +13,7 @@ export async function nozzleOptions(branchId: string): Promise<Option[]> {
 }
 
 export async function tankOptions(branchId: string): Promise<Option[]> {
-  const tanks = await prisma.tank.findMany({ where: { branchId }, include: { product: true }, orderBy: { name: "asc" } });
+  const tanks = await prisma.tank.findMany({ where: { branchId, active: true }, include: { product: true }, orderBy: { name: "asc" } });
   return tanks.map((t) => ({ value: t.id, label: `${t.name} (${t.product.name})` }));
 }
 

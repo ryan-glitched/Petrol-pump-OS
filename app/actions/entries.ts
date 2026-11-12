@@ -117,6 +117,10 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
     const amountPaisa = nozzleAmountPaisa(litres, asPaisa(fuelPrice.ratePaisa));
 
     const row = await prisma.$transaction(async (tx) => {
+      // Shares a row lock with updateNozzle so a nozzle can't move tanks while a reading is being saved.
+      const [locked] = await tx.$queryRaw<{ tankId: string; active: boolean }[]>`
+        SELECT "tankId", "active" FROM "Nozzle" WHERE "id" = ${nozzle.id} FOR SHARE`;
+      if (!locked?.active || locked.tankId !== nozzle.tankId) return null;
       const reading = await tx.nozzleReading.create({
         data: {
           branchId,
@@ -141,6 +145,9 @@ export async function createNozzleReading(_prev: ActionState, formData: FormData
       }
       return reading;
     });
+    if (!row) {
+      return { ok: false, errors: { nozzleId: "This nozzle was just changed or switched off. Reload the page and try again." } };
+    }
 
     await recomputeVariance(branchId, nozzle.tankId, d.date);
     await writeAudit({ session, action: "create", entity: "NozzleReading", entityId: row.id, branchId, after: row });
