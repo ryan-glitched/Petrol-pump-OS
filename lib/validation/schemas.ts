@@ -1,6 +1,6 @@
 import { z } from "zod";
+import { BILLING_CYCLES } from "@/lib/domain/credit";
 import {
-  CREDIT_STATUSES,
   EXPENSE_CATEGORIES,
   SHIFT_SLOTS,
   STAFF_ROLES,
@@ -17,7 +17,8 @@ const isoDate = z
   .refine((value) => {
     const parsed = new Date(`${value}T00:00:00Z`);
     return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-  }, "Enter a valid calendar date");
+  }, "Enter a valid calendar date")
+  .refine((value) => value >= "2000-01-01" && value <= "2099-12-31", "Check the year");
 const money = z.coerce.number().min(0, "Must be 0 or more"); // rupees at the edge -> paisa server-side
 const litres = z.coerce.number().min(0, "Must be 0 or more");
 
@@ -97,17 +98,6 @@ export const expenseInput = z.object({
   receiptUrl: z.string().optional(),
 });
 
-export const creditSaleInput = z.object({
-  date: isoDate,
-  customerName: z.string().min(1, "Customer name is required"),
-  vehicleNumber: z.string().min(1, "Vehicle number is required"),
-  productId: id,
-  litres: litres.refine((v) => v > 0, "Litres must be greater than 0"),
-  amount: money.refine((v) => v > 0, "Amount must be greater than 0"),
-  status: z.enum(CREDIT_STATUSES),
-  dueDate: isoDate,
-});
-
 export const staffInput = z.object({
   name: z.string().min(1, "Name is required"),
   role: z.enum(STAFF_ROLES),
@@ -151,7 +141,6 @@ export type DeliveryInput = z.infer<typeof deliveryInput>;
 export type SalesInput = z.infer<typeof salesInput>;
 export type MobilOilInput = z.infer<typeof mobilOilInput>;
 export type ExpenseInput = z.infer<typeof expenseInput>;
-export type CreditSaleInput = z.infer<typeof creditSaleInput>;
 export type StaffInput = z.infer<typeof staffInput>;
 export type FuelPriceInput = z.infer<typeof fuelPriceInput>;
 
@@ -205,4 +194,81 @@ export const userUpdateInput = z.object({
   userId: id,
   role: z.preprocess((v) => (v === "" ? undefined : v), z.enum(LOGIN_ROLES).optional()),
   active: optionalActive,
+});
+
+// ---- Credit customers, vehicles, credit sales and payments ----------------
+
+export const PAYMENT_METHODS = ["Cash", "Bank transfer", "Cheque", "Card", "Other"] as const;
+
+const optionalMoney = z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().min(0, "Must be 0 or more").optional());
+const optionalDate = z.preprocess((v) => (v === "" ? undefined : v), isoDate.optional());
+const optionalCycle = z.preprocess((v) => (v === "" ? undefined : v), z.enum(BILLING_CYCLES).optional());
+const optionalDays = z.preprocess(
+  (v) => (v === "" ? undefined : v),
+  z.coerce.number().int("Whole days only").min(1, "At least 1 day").max(365, "At most 365 days").optional()
+);
+
+const customDaysRule = (d: { billingCycle?: string; billingDays?: number }) => d.billingCycle !== "CUSTOM" || d.billingDays !== undefined;
+const customDaysError = { path: ["billingDays"], message: "Enter how many days the customer gets to pay" };
+
+export const creditCustomerInput = z
+  .object({
+    name: z.string().trim().min(1, "Name is required"),
+    company: optionalText,
+    phone: optionalText,
+    cnic: optionalText,
+    ntn: optionalText,
+    address: optionalText,
+    vehicles: optionalText,
+    creditLimit: optionalMoney,
+    openingBalance: optionalMoney,
+    openingDate: optionalDate,
+    billingCycle: z.enum(BILLING_CYCLES),
+    billingDays: optionalDays,
+    notes: optionalText,
+  })
+  .refine(customDaysRule, customDaysError)
+  .refine((d) => !d.openingBalance || d.openingDate !== undefined, {
+    path: ["openingDate"],
+    message: "Enter the date the opening balance was owed from",
+  });
+
+export const creditCustomerUpdateInput = z
+  .object({
+    customerId: id,
+    name: optionalText,
+    company: optionalText,
+    phone: optionalText,
+    cnic: optionalText,
+    ntn: optionalText,
+    address: optionalText,
+    creditLimit: optionalMoney,
+    removeLimit: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["true"]).optional()),
+    billingCycle: optionalCycle,
+    billingDays: optionalDays,
+    active: optionalActive,
+  })
+  .refine(customDaysRule, customDaysError);
+
+export const creditVehicleInput = z.object({
+  customerId: id,
+  plate: z.string().trim().min(1, "Vehicle number is required"),
+});
+
+export const creditSaleInput = z.object({
+  date: isoDate,
+  customerId: id,
+  vehicleId: z.string().optional(),
+  productId: id,
+  litres: litres.refine((v) => v > 0, "Litres must be greater than 0"),
+  amount: money.refine((v) => v > 0, "Amount must be greater than 0"),
+});
+
+export const creditPaymentInput = z.object({
+  date: isoDate,
+  customerId: id,
+  amount: money.refine((v) => v > 0, "Amount must be greater than 0"),
+  method: z.enum(PAYMENT_METHODS),
+  reference: optionalText,
+  notes: optionalText,
 });

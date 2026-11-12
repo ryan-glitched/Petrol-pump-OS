@@ -12,7 +12,6 @@ import { dipLitres, nozzleAmountPaisa, nozzleLitres } from "@/lib/domain/reading
 import { mobilProfitPaisa, reconcileSales } from "@/lib/domain/sales";
 import { recomputeVariance } from "@/lib/queries/variance";
 import {
-  creditSaleInput,
   deliveryInput,
   expenseInput,
   mobilOilInput,
@@ -344,43 +343,3 @@ export async function createExpense(_prev: ActionState, formData: FormData): Pro
   }
 }
 
-export async function createCreditSale(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  try {
-    const { session, branchId } = await scopedBranchId();
-    await requireCapability("credit");
-    const parsed = parseForm(creditSaleInput, formData);
-    if (!parsed.success) return { ok: false, errors: parsed.errors };
-    const d = parsed.data;
-
-    const product = await prisma.product.findFirst({
-      where: { id: d.productId, kind: "FUEL", active: true },
-      select: { id: true },
-    });
-    if (!product) return { ok: false, errors: { productId: "Select an active fuel product" } };
-
-    const row = await prisma.$transaction(async (tx) => {
-      const customer =
-        (await tx.creditCustomer.findFirst({ where: { branchId, name: d.customerName, vehicle: d.vehicleNumber } })) ??
-        (await tx.creditCustomer.create({ data: { branchId, name: d.customerName, vehicle: d.vehicleNumber } }));
-      return tx.creditSale.create({
-        data: {
-          branchId,
-          customerId: customer.id,
-          productId: d.productId,
-          date: d.date,
-          litres: d.litres,
-          amountPaisa: toPaisa(d.amount),
-          paidPaisa: d.status === "Paid" ? toPaisa(d.amount) : 0,
-          status: d.status,
-          dueDate: d.dueDate,
-        },
-      });
-    });
-    await writeAudit({ session, action: "create", entity: "CreditSale", entityId: row.id, branchId, after: row });
-    revalidatePath("/credit-customers");
-    revalidatePath("/");
-    return { ok: true, message: "Credit sale recorded." };
-  } catch (err) {
-    return toActionError(err);
-  }
-}

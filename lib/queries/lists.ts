@@ -109,10 +109,11 @@ export async function listExpenses(branchId: string): Promise<Row[]> {
 }
 
 export async function listCreditSales(branchId: string): Promise<Row[]> {
-  const rows = await prisma.creditSale.findMany({ where: { branchId }, include: { customer: true, product: true }, orderBy: [{ createdAt: "desc" }], take: PAGE });
+  const rows = await prisma.creditSale.findMany({ where: { branchId }, include: { customer: true, vehicle: true, product: true }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
   return rows.map((c) => ({
+    date: c.date,
     customer: c.customer.name,
-    vehicle: c.customer.vehicle,
+    vehicle: c.vehicle?.plate ?? "—",
     fuel: c.product.name,
     litres: `${c.litres.toLocaleString()} L`,
     amount: formatPKR(asPaisa(c.amountPaisa)),
@@ -130,5 +131,16 @@ export async function listStaff(branchId: string): Promise<Row[]> {
     shift: s.shiftSlot,
     phone: s.phone,
     status: s.status,
+  }));
+}
+
+export async function listCreditPayments(branchId: string): Promise<Row[]> {
+  const rows = await prisma.creditPayment.findMany({ where: { branchId }, include: { customer: true }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: PAGE });
+  return rows.map((p) => ({
+    date: p.date,
+    customer: p.customer.name,
+    amount: formatPKR(asPaisa(p.amountPaisa)),
+    method: p.method,
+    reference: p.reference ?? "—",
   }));
 }
