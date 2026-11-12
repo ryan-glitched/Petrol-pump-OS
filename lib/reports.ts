@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { asPaisa, formatPKR } from "@/lib/money";
+import { MARGIN_GROUPS, type MarginGroup, type MarginRow, groupMargin } from "@/lib/domain/margin";
 
 export type ReportKey =
   | "daily-sales"
@@ -7,7 +8,8 @@ export type ReportKey =
   | "credit"
   | "expenses"
   | "deliveries"
-  | "mobil-oil";
+  | "mobil-oil"
+  | `margin-${MarginGroup}`;
 
 export type ReportDef = {
   key: ReportKey;
@@ -22,7 +24,51 @@ export const REPORTS: ReportDef[] = [
   { key: "expenses", title: "Expense report", description: "Operating expenses by category and payer." },
   { key: "deliveries", title: "Stock-in report", description: "Fuel deliveries received with cost and supplier." },
   { key: "mobil-oil", title: "Lubricant sales report", description: "Mobil oil units, pricing, and profit." },
+  ...(Object.entries(MARGIN_GROUPS) as [MarginGroup, string][]).map(([by, label]) => ({
+    key: `margin-${by}` as const,
+    title: `Dealer margin by ${label.toLowerCase()}`,
+    description: `Litres sold × dealer margin per litre, totalled per ${label.toLowerCase()}.`,
+  })),
 ];
+
+function marginCells(r: MarginRow): string[] {
+  return [
+    r.label,
+    r.litres.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+    formatPKR(asPaisa(r.salesPaisa)),
+    formatPKR(asPaisa(r.marginPaisa)),
+    r.litres > 0 ? `PKR ${(Math.round(r.marginPaisa / r.litres) / 100).toFixed(2)}` : "—",
+  ];
+}
+
+async function marginReport(branchId: string, by: MarginGroup, date: { gte?: string; lte?: string } | undefined): Promise<ReportResult> {
+  const readings = await prisma.nozzleReading.findMany({
+    where: { branchId, voidedAt: null, ...(date ? { date } : {}) },
+    include: { nozzle: { include: { dispenser: true } }, product: true, shift: true },
+  });
+  const { rows, total } = groupMargin(
+    readings.map((r) => ({
+      date: r.date,
+      shiftId: r.shiftId,
+      shiftDate: r.shift?.date ?? null,
+      shift: r.shift?.shiftSlot ?? null,
+      dispenserId: r.nozzle.dispenserId,
+      dispenser: r.nozzle.dispenser.label,
+      nozzleId: r.nozzleId,
+      nozzle: r.nozzle.label,
+      fuel: r.product.name,
+      litres: r.litres,
+      amountPaisa: r.amountPaisa,
+      dealerMarginPaisaPerL: r.dealerMarginPaisaPerL,
+    })),
+    by,
+  );
+  return {
+    title: `Dealer margin by ${MARGIN_GROUPS[by].toLowerCase()}`,
+    columns: [MARGIN_GROUPS[by], "Litres", "Fuel sales", "Dealer margin", "Margin per litre"],
+    rows: rows.length ? [...rows.map(marginCells), marginCells(total)] : [],
+  };
+}
 
 export type ReportResult = { title: string; columns: string[]; rows: string[][] };
 
@@ -131,6 +177,8 @@ export async function buildReport(
         ]),
       };
     }
+    default:
+      return marginReport(branchId, key.slice("margin-".length) as MarginGroup, date);
   }
 }
 
